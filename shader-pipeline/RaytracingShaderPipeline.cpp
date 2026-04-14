@@ -192,6 +192,8 @@ void RaytracingShaderPipeline::buildTLAS() {
     );
 }
 
+//TODO: Make storage image
+
 void RaytracingShaderPipeline::buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
     vk::raii::AccelerationStructureKHR* accelStructureHandle, int primitiveCount, int instanceCount, vk::AccelerationStructureGeometryKHR geometry,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
         vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(

@@ -15,10 +15,18 @@ struct DescriptorLayoutDesc {
     uint32_t numUBOs;
     uint32_t numTextureSamplers;
     uint32_t numAccelerationStructures;
+    uint32_t numStorageImages;
 };
 struct DescriptorsInfo {
     DescriptorLayoutDesc staticData;
     DescriptorLayoutDesc dynamicData;
+};
+
+struct Image {
+    VkImage image{};
+    VmaAllocation allocation{};
+    vk::raii::ImageView imageView;
+    vk::raii::Sampler sampler;
 };
 
 
@@ -39,9 +47,6 @@ struct DescriptorKeyHash {
     }
 };
 class ShaderPipeline {
-
-
-
     protected:
         const VmaAllocator* allocator;
         vk::raii::Device* device;
@@ -57,6 +62,7 @@ class ShaderPipeline {
         std::unordered_map<VkBuffer, void*> persistentUBOPointers;
         std::optional<vk::raii::DescriptorPool> descriptorPool;
         std::vector<ShaderProgram> shaders;
+        std::vector<Image> storageImages;
     public:
         virtual ~ShaderPipeline() = default;
 
@@ -65,6 +71,8 @@ class ShaderPipeline {
                        DescriptorsInfo desc);
 
         void setUniform(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex);
+
+        void setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex);
 
         virtual void cleanUp();
 

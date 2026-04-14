@@ -1,6 +1,3 @@
-//
-// Created by neele on 4/10/2026.
-//
 
 #include "ShaderPipeline.h"
 
@@ -64,12 +61,92 @@ void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data,
     // vmaUnmapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding]);
 }
 
+void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex) {
+    Image image = {.imageView = nullptr, .sampler = nullptr};
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+    imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+
+    vmaCreateImage(
+        *allocator,
+        &imageInfo,
+        &allocInfo,
+        &image.image,
+        &image.allocation,
+        nullptr
+    );
+
+    vk::ImageViewCreateInfo viewInfo{};
+    viewInfo.image = image.image;
+    viewInfo.viewType = vk::ImageViewType::e2D;
+    viewInfo.format = vk::Format::eR32G32B32Sfloat;
+    viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    image.imageView = device -> createImageView(viewInfo);
+
+    vk::SamplerCreateInfo samplerCreateInfo(
+        {},
+        vk::Filter::eLinear,
+        vk::Filter::eLinear,
+        vk::SamplerMipmapMode::eLinear,
+        vk::SamplerAddressMode::eClampToEdge,
+        vk::SamplerAddressMode::eClampToEdge,
+    vk::SamplerAddressMode::eClampToEdge,
+        0.0,
+        0.0,
+        0.0,
+        vk::False, vk::CompareOp::eNever,
+        0.0, 0.0, vk::BorderColor::eIntOpaqueBlack
+
+    );
+    image.sampler = device->createSampler(samplerCreateInfo);
+    vk::DescriptorImageInfo descriptorImageInfo(
+        image.sampler,
+        image.imageView,
+        vk::ImageLayout::eGeneral
+
+    );
+    vk::WriteDescriptorSet write(
+        *descriptorSets[frameIndex][descriptorBinding.set],
+        descriptorBinding.binding,
+        0,
+        1,
+        vk::DescriptorType::eStorageImage,
+        &descriptorImageInfo,
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    device->updateDescriptorSets(write, nullptr);
+    storageImages.push_back(std::move(image));
+}
+
 
 void ShaderPipeline::cleanUp() {
     for (int i = 0; i < uboBuffers.size(); i++) {
         for (const auto& [key, value] : uboBuffers[i]) {
             vmaDestroyBuffer(*allocator, uboBuffers[i].at(key), uboAllocations[i].at(key));
         }
+    }
+    for (int i = 0; i < storageImages.size(); i++) {
+        vmaDestroyImage(*allocator, storageImages[i].image, storageImages[i].allocation);
     }
     persistentUBOPointers.clear();
 }
@@ -84,9 +161,11 @@ void ShaderPipeline::cleanUp() {
 //as it will not be done in the constructor
 
 void ShaderPipeline::setUpDescriptors() {
-    if (desc.dynamicData.numUBOs == 0 && desc.dynamicData.numTextureSamplers == 0
-          && desc.staticData.numUBOs == 0 && desc.staticData.numTextureSamplers == 0
-          && desc.dynamicData.numAccelerationStructures == 0 && desc.staticData.numAccelerationStructures == 0) {
+    uint32_t count =
+        ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers || desc.staticData.numAccelerationStructures || desc.dynamicData.numStorageImages) ? 1 : 0) +
+        ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers || desc.dynamicData.numAccelerationStructures || desc.dynamicData.numStorageImages) ? 1 : 0);
+
+    if (count == 0) {
         return;
     }
 
@@ -116,9 +195,6 @@ void ShaderPipeline::setUpDescriptors() {
     perFrameLayout.emplace(*device, getDescriptorSetCreateInfo(desc.dynamicData, dynamicBindingsArray));
     layouts.push_back(**perFrameLayout);
 
-    uint32_t count =
-        ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers || desc.staticData.numAccelerationStructures) ? 1 : 0) +
-        ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers || desc.dynamicData.numAccelerationStructures) ? 1 : 0);
     vk::DescriptorSetAllocateInfo allocInfo(
         *descriptorPool,
         count,
@@ -168,7 +244,17 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
             1,
             {getShaderStageFlags()},
             {}
+        );
+        bindings.push_back(binding);
+    }
 
+    for (int i = 0; i < desc.numStorageImages; i++) {
+        vk::DescriptorSetLayoutBinding binding(
+            desc.numUBOs + desc.numTextureSamplers + desc.numAccelerationStructures + i,
+            vk::DescriptorType::eStorageImage,
+            1,
+            {getShaderStageFlags()},
+            {}
         );
         bindings.push_back(binding);
     }
@@ -180,6 +266,9 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
     );
     return descriptorSetLayoutCreateInfo;
 }
+
+
+
 
 
 
