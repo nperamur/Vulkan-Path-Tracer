@@ -4,7 +4,7 @@
 #include <complex.h>
 
 #include "Loader.h"
-#include "shader-pipeline/ShaderPairRegistry.h"
+#include "shader-pipeline/ShaderPipelineRegistry.h"
 #include "vk_mem_alloc.h"
 #include "glm/fwd.hpp"
 #include "glm/glm.hpp"
@@ -24,7 +24,7 @@ struct Light {
 };
 
 class Renderer {
-    ShaderPairRegistry* shaderPairRegistry;
+    ShaderPipelineRegistry* shaderPipelineRegistry;
     vk::raii::Device* device;
     const VmaAllocator* allocator;
 
@@ -47,7 +47,7 @@ class Renderer {
 
     public:
 
-    Renderer(ShaderPairRegistry &shaderPairRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator& allocator);
+    Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator& allocator);
 
     void render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &imageView, vk::raii::ImageView &depthImageView, vk::Image
                 &, VkImage depthImage, int frameIndex);

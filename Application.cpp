@@ -448,7 +448,7 @@ void Application::createCommandBuffers() {
 }
 
 void Application::initRenderer() {
-    renderer.emplace(shaderPairRegistry, *device, *swapChainImageFormat, *swapChainExtent, *physicalDevice, allocator);
+    renderer.emplace(shaderPipelineRegistry, *device, *swapChainImageFormat, *swapChainExtent, *physicalDevice, allocator);
 }
 
 void Application::setUpMemoryAllocator() {

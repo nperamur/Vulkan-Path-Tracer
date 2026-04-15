@@ -27,8 +27,8 @@ add_executable(vulkan_test Application.cpp Application.h
         shader-pipeline/ShaderPair.h
         shader-pipeline/ShaderProgram.cpp
         shader-pipeline/ShaderProgram.h
-        shader-pipeline/ShaderPairRegistry.cpp
-        shader-pipeline/ShaderPairRegistry.h
+        shader-pipeline/ShaderPipelineRegistry.cpp
+        shader-pipeline/ShaderPipelineRegistry.h
         Renderer.cpp
         Renderer.h
         Loader.cpp
@@ -75,6 +75,10 @@ find_program(GLSLC glslc)
 file(GLOB GLSL_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/*.vert
         ${CMAKE_CURRENT_SOURCE_DIR}/*.frag
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.rgen
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.rmiss
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.rchit
+
 )
 
 foreach(GLSL_FILE ${GLSL_FILES})

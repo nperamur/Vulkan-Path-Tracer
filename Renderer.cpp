@@ -41,16 +41,16 @@ cmd.beginRendering(infoName);
 
 
 
-Renderer::Renderer(ShaderPairRegistry &shaderPairRegistry, vk::raii::Device& device, vk::Format& swapChainImageFormat,
+Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device& device, vk::Format& swapChainImageFormat,
                    vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator& allocator) {
-    this -> shaderPairRegistry = &shaderPairRegistry;
+    this -> shaderPipelineRegistry = &shaderPipelineRegistry;
     this -> swapChainImageFormat = &swapChainImageFormat;
     this -> swapChainExtent = &swapChainExtent;
     DescriptorsInfo triangleDescriptorsInfo = {
         .staticData = {.numUBOs = 1, .numTextureSamplers = 0},
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
-    shaderPairRegistry.registerShaderPair(std::make_unique<ShaderPair>("triangle", device, swapChainImageFormat, allocator, triangleDescriptorsInfo));
+    shaderPipelineRegistry.registerShaderPipeline(std::make_unique<ShaderPair>("triangle", device, swapChainImageFormat, allocator, triangleDescriptorsInfo));
     std::vector<float> triangleVertices = {
         0.0f, -1.0f, 0.0f,
         1.0f,  1.0f, 0.0f,
@@ -71,7 +71,7 @@ Renderer::Renderer(ShaderPairRegistry &shaderPairRegistry, vk::raii::Device& dev
 
     light.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
     light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
-    shaderPairRegistry.getShaderPair("triangle") -> setUniform({.set = 0, .binding = 0}, &light, sizeof(light),  0);
+    shaderPipelineRegistry.getShaderPipeline("triangle") -> setUniform({.set = 0, .binding = 0}, &light, sizeof(light),  0);
     this -> device = &device;
 }
 
@@ -96,7 +96,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     BEGIN_RENDER_PASS(commandBuffer, *imageView, *depthImageView, *swapChainExtent, myRenderInfo);
 
-    ShaderPair* triangleShader = shaderPairRegistry->getShaderPair("triangle").get();
+    ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline("triangle").get());
     triangleShader -> bind(commandBuffer, frameIndex);
 
     float time = glfwGetTime();
@@ -220,7 +220,7 @@ void Renderer::renderingMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk
 
 
 void Renderer::cleanUp() {
-    this -> shaderPairRegistry -> cleanUp();
+    this -> shaderPipelineRegistry -> cleanUp();
     vmaDestroyBuffer(*allocator, instanceBuffer, instanceAllocation);
 }
 

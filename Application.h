@@ -18,7 +18,7 @@
 #include "Camera.h"
 #include "Renderer.h"
 #include "shader-pipeline/ShaderPair.h"
-#include "shader-pipeline/ShaderPairRegistry.h"
+#include "shader-pipeline/ShaderPipelineRegistry.h"
 
 //This class owns and manages the lifecycle of the application
 //It handles window management, initialization of vulkan (i.e. devices, swap chain, command buffers ect.) and coordination of systems
@@ -42,7 +42,7 @@ class Application {
     VkImage depthImage;
     VmaAllocation depthImageAllocation;
     std::optional<Renderer> renderer;
-    ShaderPairRegistry shaderPairRegistry;
+    ShaderPipelineRegistry shaderPipelineRegistry;
     VmaAllocator allocator;
     GLFWwindow* window;
     Camera camera;

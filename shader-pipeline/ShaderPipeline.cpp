@@ -207,6 +207,10 @@ void ShaderPipeline::setUpDescriptors() {
 
 }
 
+std::string ShaderPipeline::getIdentifier() const {
+    return identifier;
+}
+
 vk::ShaderStageFlags ShaderPipeline::getShaderStageFlags() {
     return vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 }

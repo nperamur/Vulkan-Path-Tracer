@@ -11,9 +11,6 @@ ShaderPair::ShaderPair(std::string str, vk::raii::Device& device, vk::Format& sw
 
 
 
-std::string ShaderPair::getIdentifier() const {
-    return identifier;
-}
 
 
 
