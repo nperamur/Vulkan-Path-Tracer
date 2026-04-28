@@ -4,6 +4,7 @@
 
 
 #include <fstream>
+#include <iostream>
 #include <string>
 
 
@@ -15,7 +16,7 @@
 
 
 ShaderProgram::ShaderProgram(std::string filename, vk::raii::Device* device, vk::ShaderStageFlagBits type) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    std::ifstream file("resources/shaders/" + filename, std::ios::ate | std::ios::binary);
     std::vector<char> bytecode(file.tellg());
     file.seekg(0);
     file.read(bytecode.data(), bytecode.size());

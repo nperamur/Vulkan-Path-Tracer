@@ -54,6 +54,7 @@ class Application {
     GLFWwindow* getWindow();
 
     Camera getCamera();
+    void resetAllCommandBuffers();
 
 private:void cleanUp(GLFWwindow *window);
 

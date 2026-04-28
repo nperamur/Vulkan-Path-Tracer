@@ -9,48 +9,72 @@
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "glm/gtx/dual_quaternion.hpp"
 #include "shader-pipeline/RaytracingShaderPipeline.h"
+#include "VulkanCommon.h"
+
+static inline void begin_render_pass(
+    vk::CommandBuffer cmd,
+    vk::ImageView colorView,
+    vk::ImageView const* depthView,
+    vk::Extent2D extent)
+{
+    vk::RenderingAttachmentInfo colorAttachment(
+        colorView,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ResolveModeFlagBits::eNone,
+        {}, {},
+        vk::AttachmentLoadOp::eClear,
+        vk::AttachmentStoreOp::eStore,
+        vk::ClearValue{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}}
+    );
+
+    vk::RenderingAttachmentInfo depthAttachment;
+    if (depthView) {
+        depthAttachment = vk::RenderingAttachmentInfo(
+            *depthView,
+            vk::ImageLayout::eDepthStencilAttachmentOptimal,
+            vk::ResolveModeFlagBits::eNone,
+            {}, {},
+            vk::AttachmentLoadOp::eClear,
+            vk::AttachmentStoreOp::eDontCare,
+            vk::ClearValue(vk::ClearDepthStencilValue(1.0f, 0))
+        );
+    }
+
+    vk::RenderingInfo renderingInfo(
+        {},
+        vk::Rect2D({0, 0}, extent),
+        1, 0, 1, &colorAttachment,
+        depthView ? &depthAttachment : nullptr,
+        nullptr
+    );
+
+    cmd.beginRendering(renderingInfo);
+}
+
+int numFramesSinceResize = 0;
 
 
-#define BEGIN_RENDER_PASS(cmd, view, depthView, extent, infoName) \
-vk::RenderingAttachmentInfo colorAttachment( \
-view, \
-vk::ImageLayout::eColorAttachmentOptimal, \
-vk::ResolveModeFlagBits::eNone, \
-{}, {}, \
-vk::AttachmentLoadOp::eClear, \
-vk::AttachmentStoreOp::eStore, \
-vk::ClearValue{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}} \
-); \
-vk::RenderingAttachmentInfo depthAttachment( \
-depthView, \
-vk::ImageLayout::eDepthStencilAttachmentOptimal, \
-vk::ResolveModeFlagBits::eNone, \
-{}, {}, \
-vk::AttachmentLoadOp::eClear, \
-vk::AttachmentStoreOp::eDontCare, \
-vk::ClearValue(vk::ClearDepthStencilValue(1.0f, 0)) \
-); \
-vk::RenderingInfo infoName( \
-{}, \
-vk::Rect2D({0, 0}, extent), \
-1, 0, 1, &colorAttachment, \
-&depthAttachment, nullptr \
-); \
-cmd.beginRendering(infoName);
-
-
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    numFramesSinceResize = 0;
+}
 
 Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device& device, vk::Format& swapChainImageFormat,
-                   vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator& allocator) {
+                   vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator* allocator) {
     this -> shaderPipelineRegistry = &shaderPipelineRegistry;
     this -> swapChainImageFormat = &swapChainImageFormat;
     this -> swapChainExtent = &swapChainExtent;
+    this -> device = &device;
     DescriptorsInfo triangleDescriptorsInfo = {
         .staticData = {.numUBOs = 1, .numTextureSamplers = 0},
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
-    shaderPipelineRegistry.registerShaderPipeline(std::make_unique<ShaderPair>("triangle", device, swapChainImageFormat, allocator, triangleDescriptorsInfo));
+    this -> imageViewManager.emplace(allocator, device);
+    this -> barrierManager.emplace();
+
+    glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device, swapChainImageFormat, *allocator, triangleDescriptorsInfo, 1));
     std::vector<float> triangleVertices = {
         0.0f, -1.0f, 0.0f,
         1.0f,  1.0f, 0.0f,
@@ -64,21 +88,65 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
     //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, device, physicalDevice), mvp.transformation);
     this -> mvp = {.transformation = glm::mat4(1.0f), .view = Application::get() -> getCamera().createViewMatrix(), .projection = createProjectionMatrix()};
+    this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
+
     ModelLoader modelLoader;
     entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), mvp.transformation);
-    this->allocator = &allocator;
+    this->allocator = allocator;
 
 
     light.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
     light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
-    shaderPipelineRegistry.getShaderPipeline("triangle") -> setUniform({.set = 0, .binding = 0}, &light, sizeof(light),  0);
-    this -> device = &device;
+
+    this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({.set = 0, .binding = 0}, &light, sizeof(light),  0);
+
+    //raytracing
+    // this -> geometry = {};
+    DescriptorsInfo raytracingDescriptorsInfo = {
+        .staticData = {.numTextureSamplers = 1, .numAccelerationStructures = 1, .numStorageImages = 1},
+        .dynamicData = {.numUBOs = 2}
+    };
+    this->accelStructureManager = AccelerationStructureManager(device, physicalDevice, &*allocator);
+    accelStructureManager -> build(entities, mvp);
+    std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device, physicalDevice, swapChainImageFormat, *allocator, raytracingDescriptorsInfo);
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
+    RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
+
+    for (int i = 0; i < 3; i++) {
+        rtShader->setAccelerationStructure({0, 0}, accelStructureManager -> getTLASData(), i);
+    }
+
+    int width, height;
+    glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
+    imageViewManager -> registerImage(RenderPassImages::baseForwardPass, width, height);
+
+
+
 }
 
 
 
 void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &imageView, vk::raii::ImageView &depthImageView, vk::Image &image, VkImage depthImage, int frameIndex) {
     //TODO: add secondary command buffer support later
+    RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
+    ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::triangle).get());
+    int width, height;
+    glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
+    if (numFramesSinceResize == 0) {
+        device->waitIdle();
+        Application::get() -> resetAllCommandBuffers();
+
+        this->depthTextureView.reset();
+        this->depthTextureView.emplace(TextureView{.imageView = depthImageView});
+        this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
+    }
+
+    if (numFramesSinceResize < 3) {
+        rtShaderPipeline -> setTextureSampler({0, 1}, *depthTextureView, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
+        rtShaderPipeline -> setStorageImage({0, 2}, width, height, frameIndex, StorageImages::raytracingOutput);
+    }
+    numFramesSinceResize++;
+
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D(
     {0, 0}, *swapChainExtent
@@ -94,9 +162,9 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     commandBuffer.begin(beginInfo);
     renderingMemoryBarrier(commandBuffer, image, depthImage);
 
-    BEGIN_RENDER_PASS(commandBuffer, *imageView, *depthImageView, *swapChainExtent, myRenderInfo);
 
-    ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline("triangle").get());
+    //base forward pass
+    begin_render_pass(commandBuffer, *imageView, &*depthImageView, *swapChainExtent);
     triangleShader -> bind(commandBuffer, frameIndex);
 
     float time = glfwGetTime();
@@ -122,8 +190,25 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
         renderModel(commandBuffer, entity.getModel(), viewport, rect2D);
 
     }
+
+
     commandBuffer.endRendering();
+
+    inverseViewProj.inverseProj = glm::inverse(mvp.projection);
+    inverseViewProj.inverseView = glm::inverse(mvp.view);
+
+
+    //raytracing
+    rtShaderPipeline -> bind(commandBuffer, frameIndex);
+    rtShaderPipeline -> setUniform({.set = 1, .binding = 0}, &light, sizeof(light), frameIndex);
+    rtShaderPipeline -> setUniform({.set = 1, .binding = 1}, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
+    barrierManager -> begin();
+    barrierManager -> transition(depthImage, BarrierUsage::depthWrite, BarrierUsage::depthRead);
+    barrierManager -> commit(commandBuffer);
+    this -> traceRays(commandBuffer, viewport, rect2D, width, height, 1);
+
     presentationMemoryBarrier(commandBuffer, image, depthImage);
+
     commandBuffer.end();
 }
 
@@ -147,185 +232,57 @@ void Renderer::renderModel(vk::raii::CommandBuffer& commandBuffer, Model& model,
 
 }
 
-void Renderer::presentationMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk::Image& image, VkImage& depthImage) {
-    vk::ImageMemoryBarrier2 barrierToPresent(
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::PipelineStageFlagBits2::eBottomOfPipe,
-        vk::AccessFlagBits2::eNone,
-        vk::ImageLayout::eColorAttachmentOptimal,
-           vk::ImageLayout::ePresentSrcKHR,
-        {}, {},
-        image,
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)
-    );
-
-    vk::ImageMemoryBarrier2 depthBarrier(
-        vk::PipelineStageFlagBits2::eEarlyFragmentTests,
-        vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-        vk::PipelineStageFlagBits2::eBottomOfPipe,
-        vk::AccessFlagBits2::eNone,
-        vk::ImageLayout::eDepthStencilAttachmentOptimal,
-           vk::ImageLayout::ePresentSrcKHR,
-        {}, {},
-        depthImage,
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1)
-    );
-
-    std::array<vk::ImageMemoryBarrier2, 2> barriers = {{
-        barrierToPresent,
-        depthBarrier
-    }};
-
-    vk::DependencyInfo presentDepInfo({}, {}, {}, barriers);
-    commandBuffer.pipelineBarrier2(presentDepInfo);
+void Renderer::traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth) {
+    commandBuffer.setViewport(0, viewport);
+    commandBuffer.setScissor(0, rect2D);
+    if (width == 0 || height == 0) return;
+    RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
+    commandBuffer.traceRaysKHR(*rtShaderPipeline -> getRegion(RaytracingRegion::rayGen),
+                                *rtShaderPipeline -> getRegion(RaytracingRegion::miss),
+                                *rtShaderPipeline -> getRegion(RaytracingRegion::closestHit),
+                                *rtShaderPipeline -> getRegion(RaytracingRegion::callable), width, height, depth);
 }
 
+
 void Renderer::renderingMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk::Image& image, VkImage& depthImage) {
-    vk::ImageMemoryBarrier2 barrierToRender(
-    vk::PipelineStageFlagBits2::eTopOfPipe,
-    vk::AccessFlagBits2::eNone,
-    vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-    vk::AccessFlagBits2::eColorAttachmentWrite,
-    vk::ImageLayout::eUndefined,
-    vk::ImageLayout::eColorAttachmentOptimal,
-    {}, {},
-    image,
-    vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1)
-    );
+    RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
+    barrierManager -> begin();
+    barrierManager -> transition(image, BarrierUsage::colorInitial, BarrierUsage::colorWrite);
+    barrierManager -> transition(depthImage, BarrierUsage::depthInitial, BarrierUsage::depthWrite);
+    for (const Image& storageImage : rtShader->getStorageImages()) {
+        barrierManager -> transition(storageImage.image,
+            ResourceAccess::none | ResourceType::color | ResourceStages::allCommands,
+            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing);
 
-    vk::ImageMemoryBarrier2 depthBarrier(
-    vk::PipelineStageFlagBits2::eTopOfPipe,
-    vk::AccessFlagBits2::eNone,
-    vk::PipelineStageFlagBits2::eEarlyFragmentTests,
-    vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
-    vk::ImageLayout::eUndefined,
-    vk::ImageLayout::eDepthStencilAttachmentOptimal,
-    {}, {},
-        depthImage,
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1)
-    );
+    }
+    barrierManager -> commit(commandBuffer);
 
-    std::array<vk::ImageMemoryBarrier2, 2> barriers = {{
-        barrierToRender,
-        depthBarrier
-    }};
+}
 
 
-    vk::DependencyInfo depInfo({}, {}, {}, barriers);
-    commandBuffer.pipelineBarrier2(depInfo);
 
+//TODO: If I add refitting, add a memory barrier for acceleration structures
+void Renderer::presentationMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk::Image& image, VkImage& depthImage) {
+    RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
+    barrierManager -> begin();
+    barrierManager -> transition(image, BarrierUsage::colorWrite, BarrierUsage::presentColor);
+    barrierManager -> transition(depthImage, BarrierUsage::depthRead, BarrierUsage::presentDepth);
+    for (const Image& storageImage : rtShader->getStorageImages()) {
+        //TODO: change all commands
+        barrierManager -> transition(storageImage.image,
+        ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing,
+        ResourceAccess::none | ResourceType::storageImage | ResourceType::color | ResourceStages::allCommands);
+
+    }
+    barrierManager -> commit(commandBuffer);
 }
 
 
 
 void Renderer::cleanUp() {
     this -> shaderPipelineRegistry -> cleanUp();
-    vmaDestroyBuffer(*allocator, instanceBuffer, instanceAllocation);
-}
-
-
-void Renderer::buildBLASGeometry() {
-    geometry.tlasGeometry.primitiveCount = entities.size();
-
-    int i = 0;
-    for (Entity &entity : entities) {
-        vk::BufferDeviceAddressInfo vertexBufferDeviceAddressInfo(
-            *entity.getModel().vertexBuffer
-        );
-        vk::DeviceAddress vertexAddress = device -> getBufferAddress(vertexBufferDeviceAddressInfo);
-        vk::BufferDeviceAddressInfo indexBufferDeviceAddressInfo(
-            *entity.getModel().indexBuffer
-        );
-        vk::DeviceAddress indexAddress = device -> getBufferAddress(indexBufferDeviceAddressInfo);
-
-        vk::DeviceOrHostAddressConstKHR vertexData(vertexAddress);
-        vk::DeviceOrHostAddressConstKHR indexData(indexAddress);
-        vk::AccelerationStructureGeometryTrianglesDataKHR triangleData(
-            vk::Format::eR32G32B32Sfloat,
-            vertexData,
-            sizeof(float) * 3,
-            entity.getModel().numVertices - 1,
-            vk::IndexType::eUint32,
-            indexData,
-            {}
-
-        );
-        vk::AccelerationStructureGeometryDataKHR asGeometryData(triangleData);
-        vk::AccelerationStructureGeometryKHR triangleGeometry(
-            vk::GeometryTypeKHR::eTriangles,
-            asGeometryData,
-            {}
-
-        );
-
-
-        GeometryData geometryData = {.geometry = triangleGeometry, .primitiveCount = (uint32_t)(entity.getModel().numIndices / 3)};
-        geometry.blasGeometry.push_back(geometryData);
-
-    }
-
-
-
-}
-
-void Renderer::buildTLASGeometry(std::vector<AccelerationStructureData> blasData) {
-    std::vector<vk::AccelerationStructureInstanceKHR> instances;
-    int i = 0;
-    for (Entity &entity : entities) {
-        entity.updateTransformationMatrix();
-        glm::mat4 transposed = glm::transpose(mvp.transformation);
-        vk::TransformMatrixKHR transformMatrix;
-        memcpy(&transformMatrix, &transposed, sizeof(vk::TransformMatrixKHR));
-        vk::AccelerationStructureInstanceKHR asInstance(
-            transformMatrix,
-            i,
-            0xFF,
-            0,
-            {},
-            blasData[i].deviceAddress
-        );
-        instances.push_back(asInstance);
-        i++;
-    }
-
-
-    VkBufferCreateInfo instanceBufferInfo{};
-    instanceBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-
-    instanceBufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    VmaAllocationCreateInfo instanceBufferAllocInfo{};
-    instanceBufferAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-    instanceBufferAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    instanceBufferInfo.size = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-    vmaCreateBuffer(*allocator, &instanceBufferInfo, &instanceBufferAllocInfo, &instanceBuffer, &instanceAllocation, nullptr);
-
-    VmaAllocationInfo instanceAllocInfo;
-    vmaGetAllocationInfo(*allocator, instanceAllocation, &instanceAllocInfo);
-    uint8_t* mapped = (uint8_t*)instanceAllocInfo.pMappedData;
-
-    memcpy(mapped, instances.data(), instances.size() * sizeof(VkAccelerationStructureInstanceKHR));
-
-    vk::BufferDeviceAddressInfo addressInfo(
-        instanceBuffer
-    );
-    vk::DeviceAddress instanceAddress = device -> getBufferAddress(addressInfo);
-    vk::DeviceOrHostAddressConstKHR address(instanceAddress);
-    vk::AccelerationStructureGeometryInstancesDataKHR instanceGeometry(
-        VK_FALSE,
-         address
-
-    );
-    vk::AccelerationStructureGeometryDataKHR asGeometryData(instanceGeometry);
-
-    vk::AccelerationStructureGeometryKHR tlasGeometry(
-        vk::GeometryTypeKHR::eInstances,
-        asGeometryData,
-        {}
-
-    );
-
-    this -> geometry.tlasGeometry.geometry = tlasGeometry;
+    this -> accelStructureManager -> cleanUp();
+    this -> imageViewManager -> cleanUp();
 }
 
 

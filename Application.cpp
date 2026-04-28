@@ -52,18 +52,25 @@ void Application::cleanUp(GLFWwindow* window) {
 
 void Application::loop(GLFWwindow* window) {
     int currentFrame = 0;
+    double lastTime = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        int width, height;
+        glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
+        if (width == 0 || height == 0) {
+            glfwWaitEvents();
+            continue;
+        }
         device->waitForFences({*imageAvailableFences.at(currentFrame), *syncHostWithDeviceFences.at(currentFrame)}, VK_TRUE, UINT64_MAX);
 
-
+        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
         int imageIndex = getNextImage(currentFrame);
         if (imageIndex == -1) {
-            std::cout << "Swapchain next image retrieval failed";
-            break;
+            //std::cout << "Swapchain next image retrieval failed";
+            currentFrame = 0;
+            continue;
         }
         camera.handleInputs();
-        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
         commandBuffers->at(imageIndex).reset();
         renderer -> render(commandBuffers->at(imageIndex), imageViews.at(imageIndex), depthImageView.value(), swapChain -> getImages().at(imageIndex), depthImage, currentFrame);
         draw(imageIndex, flagBits, currentFrame);
@@ -71,6 +78,10 @@ void Application::loop(GLFWwindow* window) {
         uint32_t image = imageIndex;
         present(&image, currentFrame);
         currentFrame = (currentFrame + 1) % 3;
+        double currentTime = glfwGetTime();
+        double deltaTime = currentTime - lastTime;
+        // printf("FPS:%f\n", 1/deltaTime);
+        lastTime = currentTime;
     }
 }
 
@@ -138,7 +149,8 @@ int Application::getNextImage(int currentFrame) {
                 break;
             case vk::Result::eSuboptimalKHR:
                 //std::cout << "Suboptimal KHR. May recreate later.";
-                break;
+                setupSwapChain();
+                return -1;
             default:
                 throw std::runtime_error("Failed to present swapchain image: " + vk::to_string(result));
         }
@@ -213,6 +225,7 @@ void Application::createVulkanInstance() {
         enabledLayerCount = 1;
     } else {
         enabledLayers[0] = nullptr;
+        enabledLayerCount = 0;
     }
     // std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
     // extensions.push_back("VK_EXT_debug_utils");
@@ -271,7 +284,14 @@ void Application::setupDevices() {
     const char* enabledExtensions[8] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline", "VK_KHR_deferred_host_operations", "VK_KHR_ray_query", "VK_KHR_pipeline_library", "VK_KHR_buffer_device_address", "VK_EXT_descriptor_indexing"};
     vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures(VK_TRUE);
     vk::PhysicalDeviceSynchronization2Features sync2Features(VK_TRUE);
-
+    vk::PhysicalDeviceBufferDeviceAddressFeatures deviceAddressFeatures(VK_TRUE);
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtFeatures{};
+    rtFeatures.rayTracingPipeline = VK_TRUE;
+    rtFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE; // optional
+    rtFeatures.pNext = nullptr;
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR physicalDeviceAccelerationFeatures{};
+    physicalDeviceAccelerationFeatures.accelerationStructure = VK_TRUE;
+    physicalDeviceAccelerationFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,
@@ -285,6 +305,9 @@ void Application::setupDevices() {
 
     dynamicRenderingFeatures.setPNext(&sync2Features);
     deviceCreateInfo.setPNext(&dynamicRenderingFeatures);
+    sync2Features.setPNext(&deviceAddressFeatures);
+    deviceAddressFeatures.setPNext(&rtFeatures);
+    rtFeatures.setPNext(physicalDeviceAccelerationFeatures);
 
 
     device.emplace(*physicalDevice, deviceCreateInfo);
@@ -293,21 +316,10 @@ void Application::setupDevices() {
         volkLoadDevice(**device);
     #endif
 
-    vk::SemaphoreCreateInfo semaphoreInfo{};
-    vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
-
-    for (int i = 0; i < 3; i++) {
-        imageAvailableSemaphores.emplace_back(*device, semaphoreInfo);
-        renderFinishedSemaphores.emplace_back(*device, semaphoreInfo);
-        imageAvailableFences.emplace_back(*device, fenceInfo);
-        syncHostWithDeviceFences.emplace_back(*device, fenceInfo);
-    }
 }
 
 
 void Application::setupSwapChain() {
-
-
     device->waitIdle();
     vk::SurfaceCapabilitiesKHR capabilities = physicalDevice -> getSurfaceCapabilitiesKHR(*surface);
     if (capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0) return;
@@ -362,6 +374,20 @@ void Application::setupSwapChain() {
 
     swapChain.emplace(device.value(), swapChainCreateInfo);
     createSwapChainImageViews();
+
+    vk::SemaphoreCreateInfo semaphoreInfo{};
+    vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
+
+    imageAvailableFences.clear();
+    renderFinishedSemaphores.clear();
+    imageAvailableSemaphores.clear();
+    syncHostWithDeviceFences.clear();
+    for (int i = 0; i < 3; i++) {
+        imageAvailableSemaphores.emplace_back(*device, semaphoreInfo);
+        renderFinishedSemaphores.emplace_back(*device, semaphoreInfo);
+        imageAvailableFences.emplace_back(*device, fenceInfo);
+        syncHostWithDeviceFences.emplace_back(*device, fenceInfo);
+    }
 }
 
 void Application::createSwapChainImageViews() {
@@ -395,7 +421,7 @@ void Application::createSwapChainImageViews() {
     imageInfo.arrayLayers = 1;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -448,7 +474,7 @@ void Application::createCommandBuffers() {
 }
 
 void Application::initRenderer() {
-    renderer.emplace(shaderPipelineRegistry, *device, *swapChainImageFormat, *swapChainExtent, *physicalDevice, allocator);
+    renderer.emplace(shaderPipelineRegistry, *device, *swapChainImageFormat, *swapChainExtent, *physicalDevice, &allocator);
 }
 
 void Application::setUpMemoryAllocator() {
@@ -462,9 +488,15 @@ void Application::setUpMemoryAllocator() {
     vulkanFunctions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
 
     allocatorInfo.pVulkanFunctions = &vulkanFunctions;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+
 
 
     vmaCreateAllocator(&allocatorInfo, &allocator);
+}
+
+void Application::resetAllCommandBuffers() {
+    commandPool -> reset();
 }
 
 int main() {

@@ -1,0 +1,53 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
+layout(set = 0, binding = 2, rgba16f) uniform image2D storageImage;
+
+struct RayPayload {
+    vec3 hitColor;
+    float distance;
+};
+
+layout(set = 1, binding = 0) uniform LightUBO {
+    vec4 position;
+    vec4 color;
+} lightData;
+
+layout(set = 1, binding = 1) uniform InverseViewProj {
+    mat4 invViewMatrix;
+    mat4 invProjMatrix;
+} inverseViewProj;
+
+layout(location = 0) rayPayloadEXT RayPayload rayPayload;
+
+
+void main() {
+    uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT;
+
+    float tMin = 0.001f;
+    float tMax = 1.0f;
+
+    const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+
+    float depth = texelFetch(depthBuffer, pixelCoords, 0).r;
+    vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy);
+    vec4 ndcPos = vec4(uv * 2.0 - 1.0, depth, 1.0);
+    vec4 origin = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * ndcPos);
+    origin /= origin.w;
+    traceRayEXT(
+        topLevelAS,
+        rayFlags,
+        0xFF,
+        0,
+        1,
+        1,
+        origin.xyz,
+        tMin,
+        normalize(lightData.position).xyz,
+        tMax,
+        0
+    );
+
+    imageStore(storageImage, pixelCoords, vec4(rayPayload.hitColor, 1.0));
+}

@@ -10,7 +10,6 @@ ShaderPipeline::ShaderPipeline(std::string str, vk::raii::Device& device, vk::Fo
     this->allocator = &allocator;
     this->desc = desc;
     this->identifier = str;
-    setUpDescriptors();
 }
 
 void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex) {
@@ -61,12 +60,20 @@ void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data,
     // vmaUnmapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding]);
 }
 
-void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex) {
+void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex, std::string identifier) {
+    for (int i = 0; i < storageImages.size(); i++) {
+        if (storageImages[i].identifier == identifier && storageImages[i].frameIndex == frameIndex) {
+            device->waitIdle();
+            vmaDestroyImage(*allocator, storageImages[i].image, storageImages[i].allocation);
+            storageImages.erase(storageImages.begin() + i);
+            break;
+        }
+    }
     Image image = {.imageView = nullptr, .sampler = nullptr};
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+    imageInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
     imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
     imageInfo.mipLevels = 1;
     imageInfo.arrayLayers = 1;
@@ -92,7 +99,7 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
     vk::ImageViewCreateInfo viewInfo{};
     viewInfo.image = image.image;
     viewInfo.viewType = vk::ImageViewType::e2D;
-    viewInfo.format = vk::Format::eR32G32B32Sfloat;
+    viewInfo.format = vk::Format::eR16G16B16A16Sfloat;
     viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
@@ -117,6 +124,8 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
 
     );
     image.sampler = device->createSampler(samplerCreateInfo);
+    image.identifier = identifier;
+    image.frameIndex = frameIndex;
     vk::DescriptorImageInfo descriptorImageInfo(
         image.sampler,
         image.imageView,
@@ -136,6 +145,54 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
     );
     device->updateDescriptorSets(write, nullptr);
     storageImages.push_back(std::move(image));
+
+
+}
+
+//This method is for externally managed texture samplers
+
+void ShaderPipeline::setTextureSampler(DescriptorBinding descriptorBinding, TextureView &image, vk::ImageLayout imageLayout, int frameIndex) const {
+        vk::SamplerCreateInfo samplerCreateInfo(
+         {},
+         vk::Filter::eLinear,
+         vk::Filter::eLinear,
+         vk::SamplerMipmapMode::eLinear,
+         vk::SamplerAddressMode::eClampToEdge,
+         vk::SamplerAddressMode::eClampToEdge,
+     vk::SamplerAddressMode::eClampToEdge,
+         0.0,
+         0.0,
+         0.0,
+         vk::False, vk::CompareOp::eNever,
+         0.0, 0.0, vk::BorderColor::eIntOpaqueBlack
+
+     );
+    if (!image.sampler.has_value()) {
+        image.sampler.emplace(device->createSampler(samplerCreateInfo));
+    }
+    vk::DescriptorImageInfo descriptorImageInfo(
+        *image.sampler,
+        image.imageView,
+        imageLayout
+
+    );
+    vk::WriteDescriptorSet write(
+        *descriptorSets[frameIndex][descriptorBinding.set],
+        descriptorBinding.binding,
+        0,
+        1,
+        vk::DescriptorType::eCombinedImageSampler,
+        &descriptorImageInfo,
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    device->updateDescriptorSets(write, nullptr);
+}
+
+
+const std::vector<Image> & ShaderPipeline::getStorageImages() const {
+    return storageImages;
 }
 
 
@@ -151,6 +208,9 @@ void ShaderPipeline::cleanUp() {
     persistentUBOPointers.clear();
 }
 
+const std::string ShaderPipeline::getIdentifier() const {
+    return identifier;
+}
 
 
 //Note to self: descriptors architecture
@@ -176,12 +236,14 @@ void ShaderPipeline::setUpDescriptors() {
         poolSizes.push_back({ vk::DescriptorType::eCombinedImageSampler, 100 });
     if (desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures > 0)
         poolSizes.push_back({ vk::DescriptorType::eAccelerationStructureKHR, 100 });
+    if (desc.dynamicData.numStorageImages + desc.staticData.numStorageImages > 0)
+        poolSizes.push_back({ vk::DescriptorType::eStorageImage, 100 });
 
 
     vk::DescriptorPoolCreateInfo poolInfo(
         vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
         (desc.dynamicData.numTextureSamplers + desc.dynamicData.numUBOs + desc.staticData.numTextureSamplers + desc.staticData.numUBOs
-                + desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures) * descriptorSets.size(),
+                + desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures + desc.dynamicData.numStorageImages + desc.staticData.numStorageImages) * descriptorSets.size(),
         poolSizes.size(),
         poolSizes.data()
     );
@@ -207,9 +269,7 @@ void ShaderPipeline::setUpDescriptors() {
 
 }
 
-std::string ShaderPipeline::getIdentifier() const {
-    return identifier;
-}
+
 
 vk::ShaderStageFlags ShaderPipeline::getShaderStageFlags() {
     return vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
@@ -229,9 +289,20 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
         bindings.push_back(binding);
     }
 
-    for (int i = 0; i < desc.numTextureSamplers; i++) {
+    for (int i = 0; i < desc.numAccelerationStructures; i++) {
         vk::DescriptorSetLayoutBinding binding(
             desc.numUBOs + i,
+            vk::DescriptorType::eAccelerationStructureKHR,
+            1,
+            {getShaderStageFlags()},
+            {}
+        );
+        bindings.push_back(binding);
+    }
+
+    for (int i = 0; i < desc.numTextureSamplers; i++) {
+        vk::DescriptorSetLayoutBinding binding(
+            desc.numUBOs + desc.numAccelerationStructures,
             vk::DescriptorType::eCombinedImageSampler,
             1,
             {getShaderStageFlags()},
@@ -241,16 +312,6 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
         bindings.push_back(binding);
     }
 
-    for (int i = 0; i < desc.numAccelerationStructures; i++) {
-        vk::DescriptorSetLayoutBinding binding(
-            desc.numUBOs + desc.numTextureSamplers + i,
-            vk::DescriptorType::eAccelerationStructureKHR,
-            1,
-            {getShaderStageFlags()},
-            {}
-        );
-        bindings.push_back(binding);
-    }
 
     for (int i = 0; i < desc.numStorageImages; i++) {
         vk::DescriptorSetLayoutBinding binding(

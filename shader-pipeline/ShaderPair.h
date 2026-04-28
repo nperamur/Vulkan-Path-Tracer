@@ -21,16 +21,19 @@ class ShaderPair : public ShaderPipeline {
     std::optional<vk::PipelineRenderingCreateInfo> rasterPipeline;
     std::optional<vk::raii::PipelineLayout> rasterPipelineLayout;
     std::optional<vk::raii::Pipeline> rasterGraphicsPipeline;
+    int numColorAttachments;
 
     public:
 
-        ShaderPair(std::string string, vk::raii::Device &device, vk::Format &swapChainImageFormat, VmaAllocator &allocator,
-               DescriptorsInfo desc);
+    ShaderPair(std::string str, vk::raii::Device &device, vk::Format &swapChainImageFormat, VmaAllocator &allocator,
+               DescriptorsInfo desc, int numColorAttachments);
 
         std::string getIdentifier() const;
         void bind(vk::raii::CommandBuffer &cmd, int frameIndex) override;
 
     private:
+
+
         void setUpPipeline() override;
 };
 

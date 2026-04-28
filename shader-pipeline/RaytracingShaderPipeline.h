@@ -4,22 +4,15 @@
 #include "ShaderPipeline.h"
 
 
-struct GeometryData {
-    vk::AccelerationStructureGeometryKHR geometry;
-    uint32_t primitiveCount;
-};
+struct AccelerationStructureData;
 
-struct Geometry {
-    GeometryData tlasGeometry;
-    std::vector<GeometryData> blasGeometry;
-
-};
-
-struct AccelerationStructureData {
-    vk::raii::AccelerationStructureKHR handle;
-    VkBuffer buffer;
-    VmaAllocation allocation;
-    vk::DeviceAddress deviceAddress;
+enum class RaytracingRegion {
+    rayGen,
+    miss,
+    closestHit,
+    anyHit,
+    intersection,
+    callable
 };
 
 class RaytracingShaderPipeline : public ShaderPipeline {
@@ -29,37 +22,43 @@ class RaytracingShaderPipeline : public ShaderPipeline {
     std::optional<vk::StridedDeviceAddressRegionKHR> raygenRegion;
     std::optional<vk::StridedDeviceAddressRegionKHR> missRegion;
     std::optional<vk::StridedDeviceAddressRegionKHR> closestHitRegion;
+    vk::StridedDeviceAddressRegionKHR emptyRegion{};
     VkBuffer sbtBuffer;
     VmaAllocation sbtAllocation;
-    Geometry geometry;
-    std::optional<AccelerationStructureData> tlasData;
-
-    std::vector<AccelerationStructureData> blasData;
 
     public:
         RaytracingShaderPipeline(std::string string, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice,
-                             vk::Format &swapChainImageFormat, VmaAllocator &allocator, DescriptorsInfo desc,
-                             Geometry& geometry);
+                             vk::Format &swapChainImageFormat, VmaAllocator &allocator, DescriptorsInfo desc);
 
         void cleanUp() override;
 
         void bind(vk::raii::CommandBuffer &commandBuffer, int frameIndex) override;
 
-        void buildBLAS();
+        void setAccelerationStructure(DescriptorBinding descriptorBinding, AccelerationStructureData &tlasData, int frameIndex);
 
-        void buildTLAS();
+        vk::StridedDeviceAddressRegionKHR* getRegion(RaytracingRegion region) {
+            switch (region) {
+                case RaytracingRegion::rayGen:
+                    return &*raygenRegion;
+                case RaytracingRegion::miss:
+                    return &*missRegion;
+                case RaytracingRegion::closestHit:
+                    return &*closestHitRegion;
+                case RaytracingRegion::intersection:
+                    return &emptyRegion;
+                case RaytracingRegion::anyHit:
+                    return &emptyRegion;
+                case RaytracingRegion::callable:
+                    return &emptyRegion;
+            }
+            return &emptyRegion;
+        }
 
     protected:
         void setUpPipeline() override;
 
-
-        void buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType, vk::raii::AccelerationStructureKHR *accelStructureHandle, int
-                                    primitiveCount, int instanceCount, vk::AccelerationStructureGeometryKHR geometry, VkBuffer
-                                    *buffer, VmaAllocation *allocation, vk::DeviceAddress *deviceAddress);
-
         vk::ShaderStageFlags getShaderStageFlags() override;
 
-    void setAccelerationStructure(DescriptorBinding descriptorBinding, int frameIndex);
 };
 
 

@@ -4,7 +4,7 @@
 #include <optional>
 
 Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32_t>> indices, std::optional<std::vector<float>> normals, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice) {
-    numVertices = vertices.size();
+    numVertices = vertices.size() / 3;
 
     size_t maxSize = vertices.size();
     if (indices.has_value()) maxSize = std::max(maxSize, indices->size());
@@ -42,13 +42,16 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
     vk::Queue queue = device.getQueue(0, 0);
 
     // vertex buffer
+    vk::MemoryAllocateFlagsInfo memFlagsInfo(
+        vk::MemoryAllocateFlagBits::eDeviceAddress
+    );
     vk::BufferCreateInfo vertexBufferCreateInfo({}, vertices.size() * sizeof(float),
-        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive);
+        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::SharingMode::eExclusive);
     vertexBuffer.emplace(device, vertexBufferCreateInfo);
     auto vertexMemReqs = vertexBuffer->getMemoryRequirements();
     for (int i = 0; i < memProps.memoryTypeCount; i++) {
         if ((vertexMemReqs.memoryTypeBits & (1 << i)) != 0 && (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
-            vertexMemory.emplace(device, vk::MemoryAllocateInfo(vertexMemReqs.size, i));
+            vertexMemory.emplace(device, vk::MemoryAllocateInfo(vertexMemReqs.size, i, &memFlagsInfo));
             break;
         }
     }
@@ -66,12 +69,12 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
     int numIndices = indices.has_value() ? indices->size() : 0;
     if (indices.has_value()) {
         vk::BufferCreateInfo indexBufferCreateInfo({}, indices->size() * sizeof(uint32_t),
-            vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive);
+            vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::SharingMode::eExclusive);
         indexBuffer.emplace(device, indexBufferCreateInfo);
         auto indexMemReqs = indexBuffer->getMemoryRequirements();
         for (int i = 0; i < memProps.memoryTypeCount; i++) {
             if ((indexMemReqs.memoryTypeBits & (1 << i)) != 0 && (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
-                indexMemory.emplace(device, vk::MemoryAllocateInfo(indexMemReqs.size, i));
+                indexMemory.emplace(device, vk::MemoryAllocateInfo(indexMemReqs.size, i, &memFlagsInfo));
                 break;
             }
         }

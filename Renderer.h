@@ -1,6 +1,7 @@
 #ifndef VULKAN_TEST_RENDERER_H
 #define VULKAN_TEST_RENDERER_H
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include <complex.h>
 
 #include "Loader.h"
@@ -11,12 +12,33 @@
 #include "glm/ext/matrix_transform.hpp"
 #include "Entity.h"
 #include "shader-pipeline/RaytracingShaderPipeline.h"
+#include "raytracing/AccelerationStructureManager.h"
+#include "VulkanCommon.h"
+#include "image-views/RenderPassImageViewManager.h"
 
-struct MVP {
-    glm::mat4 transformation;
-    glm::mat4 view;
-    glm::mat4 projection;
+#include "syncronization/BarrierManager.h"
+#define ID(name, str) inline constexpr const char* name = str;
+
+namespace Shaders {
+    ID(triangle, "triangle")
+    ID(raytracing, "raytracing")
+}
+
+namespace StorageImages {
+    ID(raytracingOutput, "raytracingOutput")
+}
+
+namespace RenderPassImages {
+    ID(baseForwardPass, "baseForwardPass")
+}
+
+
+struct InverseViewProj {
+    glm::mat4 inverseView;
+    glm::mat4 inverseProj;
 };
+
+
 
 struct Light {
     glm::vec4 position;
@@ -27,9 +49,10 @@ class Renderer {
     ShaderPipelineRegistry* shaderPipelineRegistry;
     vk::raii::Device* device;
     const VmaAllocator* allocator;
+    std::optional<BarrierManager> barrierManager;
 
-    VkBuffer instanceBuffer;
-    VmaAllocation instanceAllocation;
+    // VkBuffer instanceBuffer;
+    // VmaAllocation instanceAllocation;
 
     const vk::Format* swapChainImageFormat;
     const vk::Extent2D* swapChainExtent;
@@ -41,31 +64,36 @@ class Renderer {
     Loader loader;
 
     MVP mvp;
-    Geometry geometry;
+    // Geometry geometry;
+
+    std::optional<TextureView> depthTextureView;
+
+    InverseViewProj inverseViewProj;
+
+    std::optional<AccelerationStructureManager> accelStructureManager;
+
+    std::optional<RenderPassImageViewManager> imageViewManager;
 
 
 
     public:
 
-    Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator& allocator);
+    Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator* allocator);
 
     void render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &imageView, vk::raii::ImageView &depthImageView, vk::Image
                 &, VkImage depthImage, int frameIndex);
 
     void cleanUp();
 
-    void buildBLASGeometry();
-
-    void buildTLASGeometry(std::vector<AccelerationStructureData> blasData);
 
 private:
 
     void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, vk::Viewport viewport, vk::Rect2D rect2D);
-
     void presentationMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
 
     void renderingMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
     glm::mat4 createProjectionMatrix();
+    void traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth);
 };
 
 
