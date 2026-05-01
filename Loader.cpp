@@ -3,16 +3,18 @@
 #include <iostream>
 #include <optional>
 
-Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32_t>> indices, std::optional<std::vector<float>> normals, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice) {
+Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32_t>> indices, std::optional<std::vector<float>> normals, std::optional<std::vector<float>> textureCoords, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice) {
+    Model model;
     numVertices = vertices.size() / 3;
 
-    size_t maxSize = vertices.size();
-    if (indices.has_value()) maxSize = std::max(maxSize, indices->size());
-    if (normals.has_value()) maxSize = std::max(maxSize, normals->size());
+    size_t maxBytes = vertices.size() * sizeof(float);
+    if (indices.has_value()) maxBytes = std::max(maxBytes, indices->size() * sizeof(uint32_t));
+    if (normals.has_value()) maxBytes = std::max(maxBytes, normals->size() * sizeof(float));
+    if (textureCoords.has_value()) maxBytes = std::max(maxBytes, textureCoords->size() * sizeof(float));
 
     vk::BufferCreateInfo stagingBufferCreateInfo(
         {},
-        maxSize * sizeof(float),
+        maxBytes,
         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferSrc,
         vk::SharingMode::eExclusive
     );
@@ -55,7 +57,8 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
             break;
         }
     }
-    vertexBuffer->bindMemory(**vertexMemory, 0);
+    model.vertexMemory = std::move(vertexMemory);
+    vertexBuffer->bindMemory(**model.vertexMemory, 0);
     void* data = stagingMemory->mapMemory(0, stagingMemReqs.size);
     memcpy(data, vertices.data(), vertices.size() * sizeof(float));
     stagingMemory->unmapMemory();
@@ -78,7 +81,8 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
                 break;
             }
         }
-        indexBuffer->bindMemory(**indexMemory, 0);
+        model.indexMemory = std::move(indexMemory);
+        indexBuffer->bindMemory(**model.indexMemory, 0);
         data = stagingMemory->mapMemory(0, stagingMemReqs.size);
         memcpy(data, indices->data(), indices->size() * sizeof(uint32_t));
         stagingMemory->unmapMemory();
@@ -101,7 +105,8 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
                 break;
             }
         }
-        normalBuffer->bindMemory(**normalMemory, 0);
+        model.normalMemory = std::move(normalMemory);
+        normalBuffer->bindMemory(**model.normalMemory, 0);
         data = stagingMemory->mapMemory(0, stagingMemReqs.size);
         memcpy(data, normals->data(), normals->size() * sizeof(float));
         stagingMemory->unmapMemory();
@@ -112,11 +117,37 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
         queue.waitIdle();
     }
 
-    return Model {
-        .vertexBuffer = std::move(vertexBuffer),
-        .numVertices = numVertices,
-        .indexBuffer = std::move(indexBuffer),
-        .numIndices = numIndices,
-        .normalBuffer = std::move(normalBuffer)
-    };
+
+
+    if (textureCoords.has_value()) {
+        vk::BufferCreateInfo textureCoordCreateInfo({}, textureCoords->size() * sizeof(float),
+            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive);
+        textureCoordBuffer.emplace(device, textureCoordCreateInfo);
+        auto textureCoordMemReqs = textureCoordBuffer->getMemoryRequirements();
+        for (int i = 0; i < memProps.memoryTypeCount; i++) {
+            if ((textureCoordMemReqs.memoryTypeBits & (1 << i)) != 0 && (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
+                textureCoordMemory.emplace(device, vk::MemoryAllocateInfo(textureCoordMemReqs.size, i));
+                break;
+            }
+        }
+        model.textureCoordMemory = std::move(textureCoordMemory);
+        textureCoordBuffer->bindMemory(**model.textureCoordMemory, 0);
+        data = stagingMemory->mapMemory(0, stagingMemReqs.size);
+        memcpy(data, textureCoords->data(), textureCoords->size() * sizeof(float));
+        stagingMemory->unmapMemory();
+        commandBuffers[0].begin(beginInfo);
+        commandBuffers[0].copyBuffer(*stagingBuffer, *textureCoordBuffer, vk::BufferCopy(0, 0, textureCoords->size() * sizeof(float)));
+        commandBuffers[0].end();
+        queue.submit(submitInfo);
+        queue.waitIdle();
+    }
+
+    model.vertexBuffer = std::move(vertexBuffer);
+    model.numVertices = numVertices;
+    model.indexBuffer = std::move(indexBuffer);
+    model.numIndices = numIndices;
+    model.normalBuffer = std::move(normalBuffer);
+    model.textureCoordBuffer = std::move(textureCoordBuffer);
+
+    return model;
 }

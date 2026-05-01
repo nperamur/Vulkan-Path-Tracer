@@ -59,16 +59,18 @@ void ShaderPair::setUpPipeline() {
     vk::PipelineDynamicStateCreateInfo dynamicState({}, 2, dynamicStates);
 
     //TODO: Add normals & textures to vertex arrays if I want to go further with this
-    std::array<vk::VertexInputBindingDescription, 2> bindingDesc = {
+    std::array<vk::VertexInputBindingDescription, 3> bindingDesc = {
         vk::VertexInputBindingDescription(0, sizeof(float) * 3, vk::VertexInputRate::eVertex),
-        vk::VertexInputBindingDescription(1, sizeof(float) * 3, vk::VertexInputRate::eVertex)
+        vk::VertexInputBindingDescription(1, sizeof(float) * 3, vk::VertexInputRate::eVertex),
+        vk::VertexInputBindingDescription(2, sizeof(float) * 2, vk::VertexInputRate::eVertex)
     };
-    std::array<vk::VertexInputAttributeDescription, 2> attributes = {
+    std::array<vk::VertexInputAttributeDescription, 3> attributes = {
         vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, 0),
-        vk::VertexInputAttributeDescription(1, 1, vk::Format::eR32G32B32Sfloat, 0)
+        vk::VertexInputAttributeDescription(1, 1, vk::Format::eR32G32B32Sfloat, 0),
+        vk::VertexInputAttributeDescription(2, 2, vk::Format::eR32G32Sfloat, 0)
     };
 
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo({}, 2, bindingDesc.data(), 2, attributes.data());
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo({}, 3, bindingDesc.data(), 3, attributes.data());
 
 
     std::vector<vk::PipelineShaderStageCreateInfo> info = getStageCreateInfos();

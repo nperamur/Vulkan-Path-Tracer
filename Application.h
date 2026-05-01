@@ -34,13 +34,17 @@ class Application {
     std::vector<vk::raii::Fence> imageAvailableFences;
     std::vector<vk::raii::Fence> syncHostWithDeviceFences;
     std::vector<vk::raii::ImageView> imageViews;
-    std::optional<vk::raii::ImageView> depthImageView;
     std::optional<vk::Format> swapChainImageFormat;
     std::optional<vk::raii::CommandPool> commandPool;
     std::optional<vk::raii::CommandBuffers> commandBuffers;
     std::optional<vk::Extent2D> swapChainExtent;
-    VkImage depthImage;
-    VmaAllocation depthImageAllocation;
+    // VkImage depthImage;
+    // VmaAllocation depthImageAllocation;
+    std::array<VkImage, 3> depthImages;
+    std::array<VmaAllocation, 3> depthImageAllocations;
+
+    std::array<std::optional<vk::raii::ImageView>, 3> depthImageViews;
+
     std::optional<Renderer> renderer;
     ShaderPipelineRegistry shaderPipelineRegistry;
     VmaAllocator allocator;

@@ -61,7 +61,7 @@ Model ModelLoader::load(std::string name, Loader& loader, vk::raii::Device& devi
         }
     }
     std::ios::sync_with_stdio(oldSync);
-    return loader.load(finalVertices, indices, finalNormals, device, physicalDevice);
+    return loader.load(finalVertices, indices, finalNormals, std::nullopt, device, physicalDevice);
 }
 
 

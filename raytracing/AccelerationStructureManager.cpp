@@ -53,7 +53,7 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
     vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
         vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(
         accelerationStructureType,
-        {},
+        vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
         vk::BuildAccelerationStructureModeKHR::eBuild,
         nullptr,
         nullptr,
@@ -160,12 +160,12 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
 
 
 
-void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP& mvp) {
+void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP* mvp) {
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
     int i = 0;
     for (Entity &entity : entities) {
         entity.updateTransformationMatrix();
-        glm::mat4 transposed = glm::transpose(mvp.transformation);
+        glm::mat4 transposed = glm::transpose(mvp -> transformation);
         vk::TransformMatrixKHR transformMatrix;
         memcpy(&transformMatrix, &transposed, sizeof(vk::TransformMatrixKHR));
         vk::AccelerationStructureInstanceKHR asInstance(
@@ -274,7 +274,7 @@ void AccelerationStructureManager::cleanUp() {
 void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
     buildBLASGeometry(entities);
     buildBLAS();
-    buildTLASGeometry(blasData, entities, mvp);
+    buildTLASGeometry(blasData, entities, &mvp);
     buildTLAS();
 
 }

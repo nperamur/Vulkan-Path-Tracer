@@ -57,6 +57,7 @@ void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data,
     // void* mapped;
     // vmaMapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding], &mapped);
     memcpy(persistentUBOPointers[uboBuffers[frameIndex][descriptorBinding]], data, size);
+    vmaFlushAllocation(*allocator, uboAllocations[frameIndex][descriptorBinding], 0, size);
     // vmaUnmapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding]);
 }
 
@@ -79,7 +80,7 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
     imageInfo.arrayLayers = 1;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+    imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -195,6 +196,18 @@ const std::vector<Image> & ShaderPipeline::getStorageImages() const {
     return storageImages;
 }
 
+Image & ShaderPipeline::getStorageImage(std::string identifier, int frameIndex) {
+    for (auto & image : storageImages) {
+        if (image.identifier == identifier && image.frameIndex == frameIndex) {
+            return image;
+        }
+    }
+    throw std::runtime_error("No storage image found with specified identifier!");
+}
+
+
+
+
 
 void ShaderPipeline::cleanUp() {
     for (int i = 0; i < uboBuffers.size(); i++) {
@@ -211,6 +224,11 @@ void ShaderPipeline::cleanUp() {
 const std::string ShaderPipeline::getIdentifier() const {
     return identifier;
 }
+
+vk::Buffer & ShaderPipeline::getUniformBuffer(DescriptorBinding binding, int frameIndex) {
+    return uboBuffers[frameIndex][binding];
+}
+
 
 
 //Note to self: descriptors architecture
@@ -302,7 +320,7 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
 
     for (int i = 0; i < desc.numTextureSamplers; i++) {
         vk::DescriptorSetLayoutBinding binding(
-            desc.numUBOs + desc.numAccelerationStructures,
+            desc.numUBOs + desc.numAccelerationStructures + i,
             vk::DescriptorType::eCombinedImageSampler,
             1,
             {getShaderStageFlags()},

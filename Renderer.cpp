@@ -74,7 +74,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> barrierManager.emplace();
 
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
-    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device, swapChainImageFormat, *allocator, triangleDescriptorsInfo, 1));
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
+                                        swapChainImageFormat, *allocator, triangleDescriptorsInfo, 1));
+
     std::vector<float> triangleVertices = {
         0.0f, -1.0f, 0.0f,
         1.0f,  1.0f, 0.0f,
@@ -86,12 +88,15 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         0.0f, 0.0f, 1.0f,
     };
     std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
-    //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, device, physicalDevice), mvp.transformation);
+    //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, std::nullopt, device, physicalDevice), mvp.transformation);
     this -> mvp = {.transformation = glm::mat4(1.0f), .view = Application::get() -> getCamera().createViewMatrix(), .projection = createProjectionMatrix()};
     this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
 
     ModelLoader modelLoader;
     entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), mvp.transformation);
+    entities[entities.size() - 1].setScale(glm::vec3(0.02, 0.02, 0.02));
+
+
     this->allocator = allocator;
 
 
@@ -108,7 +113,8 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     };
     this->accelStructureManager = AccelerationStructureManager(device, physicalDevice, &*allocator);
     accelStructureManager -> build(entities, mvp);
-    std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device, physicalDevice, swapChainImageFormat, *allocator, raytracingDescriptorsInfo);
+    std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device,
+                                                            physicalDevice, swapChainImageFormat, *allocator, raytracingDescriptorsInfo);
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
     RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
 
@@ -122,30 +128,31 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
 
 
+    DescriptorsInfo combineShadersDescriptorsInfo = {
+        .staticData = {.numUBOs = 0, .numTextureSamplers = 2},
+        .dynamicData = {.numUBOs = 0, .numTextureSamplers = 0}
+    };
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
+                                    swapChainImageFormat, *allocator, combineShadersDescriptorsInfo, 1));
+
+    initScreenQuad(physicalDevice);
+
 }
 
 
 
-void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &imageView, vk::raii::ImageView &depthImageView, vk::Image &image, VkImage depthImage, int frameIndex) {
+void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &swapChainImageView, vk::raii::ImageView &depthImageView, vk::Image &swapChainImage, VkImage depthImage, int frameIndex) {
     //TODO: add secondary command buffer support later
     RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
     ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::triangle).get());
+    ShaderPair* combineShaders = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::combineShader).get());
+
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
-    if (numFramesSinceResize == 0) {
-        device->waitIdle();
-        Application::get() -> resetAllCommandBuffers();
+    resizeImageViews(combineShaders, rtShaderPipeline, depthImageView, width, height, frameIndex);
 
-        this->depthTextureView.reset();
-        this->depthTextureView.emplace(TextureView{.imageView = depthImageView});
-        this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
-    }
 
-    if (numFramesSinceResize < 3) {
-        rtShaderPipeline -> setTextureSampler({0, 1}, *depthTextureView, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
-        rtShaderPipeline -> setStorageImage({0, 2}, width, height, frameIndex, StorageImages::raytracingOutput);
-    }
-    numFramesSinceResize++;
+    Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass));
 
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D(
@@ -160,15 +167,37 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
         nullptr
     );
     commandBuffer.begin(beginInfo);
-    renderingMemoryBarrier(commandBuffer, image, depthImage);
+    // renderingMemoryBarrier(commandBuffer, swapChainImage, depthImage);
 
 
-    //base forward pass
-    begin_render_pass(commandBuffer, *imageView, &*depthImageView, *swapChainExtent);
+    barrierManager -> begin();
+    barrierManager -> transition(baseForwardPassImage -> image, BarrierUsage::colorNone, BarrierUsage::colorWrite);
+    barrierManager -> transition(depthImage, BarrierUsage::depthNone, BarrierUsage::depthWrite);
+    barrierManager -> commit(commandBuffer);
+
+    //Base Forward Pass
+    begin_render_pass(commandBuffer, this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass).imageView, &*depthImageView, *swapChainExtent);
     triangleShader -> bind(commandBuffer, frameIndex);
 
     float time = glfwGetTime();
-
+    // float speed = 0.2f;
+    //
+    // float angle = time * speed;
+    //
+    // float c = cos(angle);
+    // float s = sin(angle);
+    //
+    // float a = glm::radians(15.0);
+    // float ca = cos(a);
+    // float sa = sin(a);
+    //
+    // glm::vec3 dir = glm::normalize(glm::vec3(
+    //     c * ca - s * sa,
+    //     abs(c),
+    //     s * ca + c * sa
+    // ));
+    //
+    // light.position = glm::vec4(dir * 2000.0f, 1.0f);
 
     struct TriangleUBO {
         glm::vec4 color;
@@ -193,21 +222,51 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
 
     commandBuffer.endRendering();
+    mvp.view = Application::get() -> getCamera().createViewMatrix();
+    glm::dmat4 dProj = mvp.projection;
+    glm::dmat4 dView = mvp.view;
+    inverseViewProj.inverseProj = glm::inverse(dProj);
+    inverseViewProj.inverseView = glm::inverse(dView);
 
-    inverseViewProj.inverseProj = glm::inverse(mvp.projection);
-    inverseViewProj.inverseView = glm::inverse(mvp.view);
-
-
-    //raytracing
+    //Raytracing Pass
     rtShaderPipeline -> bind(commandBuffer, frameIndex);
     rtShaderPipeline -> setUniform({.set = 1, .binding = 0}, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform({.set = 1, .binding = 1}, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
+
     barrierManager -> begin();
     barrierManager -> transition(depthImage, BarrierUsage::depthWrite, BarrierUsage::depthRead);
+    barrierManager -> transition(rtShaderPipeline -> getUniformBuffer({.set = 1, .binding = 1}, frameIndex),
+         sizeof(inverseViewProj),  ResourceStages::hostStage | ResourceAccess::write | ResourceType::ubo,
+         ResourceAccess::read | ResourceType::ubo | ResourceStages::raytracing);
+
+    barrierManager -> transition(rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).image,
+            ResourceAccess::none | ResourceType::color | ResourceStages::allCommands,
+            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing);
+
     barrierManager -> commit(commandBuffer);
+
     this -> traceRays(commandBuffer, viewport, rect2D, width, height, 1);
 
-    presentationMemoryBarrier(commandBuffer, image, depthImage);
+
+    barrierManager -> begin();
+    barrierManager -> transition(baseForwardPassImage -> image, BarrierUsage::colorWrite, BarrierUsage::colorRead);
+    barrierManager -> transition(swapChainImage, BarrierUsage::colorNone, BarrierUsage::colorWrite);
+    barrierManager -> transition(rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).image,
+            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing,
+            BarrierUsage::colorRead);
+
+    barrierManager -> commit(commandBuffer);
+
+    //Post-process pass
+    begin_render_pass(commandBuffer, swapChainImageView, nullptr, *swapChainExtent);
+    combineShaders -> bind(commandBuffer, frameIndex);
+    renderModel(commandBuffer, screenQuad, viewport, rect2D);
+    commandBuffer.endRendering();
+
+
+    barrierManager -> begin();
+    barrierManager -> transition(swapChainImage, BarrierUsage::colorWrite, BarrierUsage::presentColor);
+    barrierManager -> commit(commandBuffer);
 
     commandBuffer.end();
 }
@@ -221,6 +280,9 @@ void Renderer::renderModel(vk::raii::CommandBuffer& commandBuffer, Model& model,
     commandBuffer.bindVertexBuffers(0, **model.vertexBuffer, offsets);
     if (model.normalBuffer.has_value()) {
         commandBuffer.bindVertexBuffers(1, **model.normalBuffer, offsets);
+    }
+    if (model.textureCoordBuffer.has_value()) {
+        commandBuffer.bindVertexBuffers(2, **model.textureCoordBuffer, offsets);
     }
     if (model.numIndices > 0) {
         commandBuffer.bindIndexBuffer(**model.indexBuffer, 0, vk::IndexType::eUint32);
@@ -243,40 +305,30 @@ void Renderer::traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport vi
                                 *rtShaderPipeline -> getRegion(RaytracingRegion::callable), width, height, depth);
 }
 
+void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex) {
+    if (numFramesSinceResize == 0) {
+        device->waitIdle();
+        Application::get() -> resetAllCommandBuffers();
 
-void Renderer::renderingMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk::Image& image, VkImage& depthImage) {
-    RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
-    barrierManager -> begin();
-    barrierManager -> transition(image, BarrierUsage::colorInitial, BarrierUsage::colorWrite);
-    barrierManager -> transition(depthImage, BarrierUsage::depthInitial, BarrierUsage::depthWrite);
-    for (const Image& storageImage : rtShader->getStorageImages()) {
-        barrierManager -> transition(storageImage.image,
-            ResourceAccess::none | ResourceType::color | ResourceStages::allCommands,
-            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing);
-
+        this->depthTextureView.reset();
+        this->depthTextureView.emplace(TextureView{.imageView = *depthImageView});
+        this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
+        this->forwardPassTextureView.reset();
+        this->forwardPassTextureView.emplace(TextureView{.imageView = this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass).imageView});
     }
-    barrierManager -> commit(commandBuffer);
+    if (numFramesSinceResize < 3) {
+        rtShaderPipeline -> setTextureSampler({0, 1}, *depthTextureView, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
+        rtShaderPipeline -> setStorageImage({0, 2}, width, height, frameIndex, StorageImages::raytracingOutput);
 
-}
+        combineShaders -> setTextureSampler({0, 0}, *forwardPassTextureView,
+                                         vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
+        rtTextureViews[frameIndex] = TextureView{.imageView = rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).imageView};
 
-
-//TODO: If I add refitting, add a memory barrier for acceleration structures
-void Renderer::presentationMemoryBarrier(vk::raii::CommandBuffer& commandBuffer, vk::Image& image, VkImage& depthImage) {
-    RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
-    barrierManager -> begin();
-    barrierManager -> transition(image, BarrierUsage::colorWrite, BarrierUsage::presentColor);
-    barrierManager -> transition(depthImage, BarrierUsage::depthRead, BarrierUsage::presentDepth);
-    for (const Image& storageImage : rtShader->getStorageImages()) {
-        //TODO: change all commands
-        barrierManager -> transition(storageImage.image,
-        ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing,
-        ResourceAccess::none | ResourceType::storageImage | ResourceType::color | ResourceStages::allCommands);
-
+        combineShaders -> setTextureSampler({0, 1}, (rtTextureViews[frameIndex]), vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
     }
-    barrierManager -> commit(commandBuffer);
+    numFramesSinceResize++;
 }
-
 
 
 void Renderer::cleanUp() {
@@ -297,8 +349,31 @@ glm::mat4 Renderer::createProjectionMatrix() {
     float farPlane = 1000.0f;
 
 
-    glm::mat4 proj = glm::perspective(fov, aspect, nearPlane, farPlane);
+    glm::mat4 proj = glm::perspectiveRH_ZO(fov, aspect, nearPlane, farPlane);
     proj[1][1] *= -1;
     return proj;
 }
+
+void Renderer::initScreenQuad(vk::raii::PhysicalDevice& physicalDevice) {
+    std::vector<float> screenQuadVertices = {
+        -1.0f, -1.0f,  0.0f,
+        -1.0f,  1.0f,  0.0f,
+         1.0f, -1.0f,  0.0f,
+         1.0f,  1.0f,  0.0f
+    };
+
+    std::vector<float> screenQuadUv = {
+        0.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 0.0f,
+        1.0f, 1.0f
+    };
+
+    std::vector<uint32_t> screenQuadIndices = {
+        0, 1, 2,
+        1, 3, 2
+    };
+    screenQuad = loader.load(screenQuadVertices, screenQuadIndices, std::nullopt, screenQuadUv, *device, physicalDevice);
+}
+
 

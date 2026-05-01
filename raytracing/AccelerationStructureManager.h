@@ -64,7 +64,7 @@ class AccelerationStructureManager {
 
     void buildTLAS();
 
-    void buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP& mvp);
+    void buildTLASGeometry(std::vector<AccelerationStructureData> &blasData, std::vector<Entity> &entities, MVP *mvp);
     void buildBLASGeometry(std::vector<Entity>& entities);
 };
 

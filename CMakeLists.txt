@@ -108,14 +108,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "DEBUG DETECTED: Engaging Address Sanitizer...")
-    target_compile_options(vulkan_test PRIVATE -fsanitize=address)
-    target_link_options(vulkan_test PRIVATE -fsanitize=address)
-
-else()
-    message(STATUS "RELEASE DETECTED: Maximum Speed Mode (No ASan)")
-endif()
+#if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+#    message(STATUS "DEBUG DETECTED: Engaging Address Sanitizer...")
+#    target_compile_options(vulkan_test PRIVATE -fsanitize=address)
+#    target_link_options(vulkan_test PRIVATE -fsanitize=address)
+#
+#else()
+#    message(STATUS "RELEASE DETECTED: Maximum Speed Mode (No ASan)")
+#endif()
 
 #vma
 include(FetchContent)

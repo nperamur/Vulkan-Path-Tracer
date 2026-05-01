@@ -20,10 +20,27 @@ void BarrierManager::transition(vk::Image image, uint32_t firstState, uint32_t s
 
 }
 
+
+void BarrierManager::transition(vk::Buffer buffer, float bufferSize, uint32_t firstState, uint32_t secondState) {
+    vk::BufferMemoryBarrier2 barrier(
+    resolveStage(firstState),
+    resolveAccess(firstState),
+    resolveStage(secondState),
+    resolveAccess(secondState),
+    0,
+    0,
+    buffer, {}, bufferSize);
+    bufferBarriers.push_back(barrier);
+
+}
+
+
+
 void BarrierManager::commit(vk::raii::CommandBuffer& commandBuffer) {
-    vk::DependencyInfo depInfo({}, {}, {}, imageBarriers);
+    vk::DependencyInfo depInfo({}, {}, bufferBarriers, imageBarriers);
     commandBuffer.pipelineBarrier2(depInfo);
     imageBarriers.clear();
+    bufferBarriers.clear();
 }
 
 vk::PipelineStageFlagBits2 BarrierManager::resolveStage(uint32_t state) {
@@ -36,6 +53,7 @@ vk::PipelineStageFlagBits2 BarrierManager::resolveStage(uint32_t state) {
     if (state & fragmentShader) return vk::PipelineStageFlagBits2::eFragmentShader;
     if (state & transferStage) return vk::PipelineStageFlagBits2::eTransfer;
     if (state & allCommands) return vk::PipelineStageFlagBits2::eAllCommands;
+    if (state & hostStage) return vk::PipelineStageFlagBits2::eHost;
     throw std::runtime_error("Cannot resolve empty stage");
 }
 
@@ -51,7 +69,7 @@ vk::Flags<vk::AccessFlagBits2> BarrierManager::resolveAccess(uint32_t state) {
 vk::Flags<vk::AccessFlagBits2> BarrierManager::resolveRead(uint32_t state) {
     vk::AccessFlagBits2 samplerBit = (state & sampler) ? vk::AccessFlagBits2::eShaderSampledRead : vk::AccessFlagBits2::eNone;
     if (state & transfer) return vk::AccessFlagBits2::eTransferRead;
-    if (state & storageImage) return vk::AccessFlagBits2::eShaderStorageRead;
+    if (state & storageImage) return (samplerBit != vk::AccessFlagBits2::eNone) ? samplerBit : vk::AccessFlagBits2::eShaderStorageRead;
     if (state & ubo) return vk::AccessFlagBits2::eUniformRead;
     if (state & vertex) return vk::AccessFlagBits2::eVertexAttributeRead;
     if (state & accelerationStructure) return vk::AccessFlagBits2::eAccelerationStructureReadKHR;
@@ -67,6 +85,7 @@ vk::Flags<vk::AccessFlagBits2> BarrierManager::resolveWrite(uint32_t state) {
     if (state & accelerationStructure) return vk::AccessFlagBits2::eAccelerationStructureWriteKHR;
     if (state & color) return vk::AccessFlagBits2::eColorAttachmentWrite;
     if (state & depth) return vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
+    if (state & ubo) return vk::AccessFlagBits2::eHostWrite;
     return vk::AccessFlagBits2::eNone;
 }
 

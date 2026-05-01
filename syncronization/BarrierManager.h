@@ -35,7 +35,8 @@ enum ResourceStages: uint32_t {
     vertexShader = 1 << 17,
     fragmentShader = 1 << 18,
     transferStage = 1 << 19,
-    allCommands = 1 << 20
+    allCommands = 1 << 20,
+    hostStage = 1<<21
 
 };
 
@@ -67,8 +68,8 @@ namespace BarrierUsage {
     constexpr uint32_t transferWrite = transfer | write | transferStage;
     constexpr uint32_t presentColor = color | none | present | bottomOfPipe;
     constexpr uint32_t presentDepth = depth | none | present | bottomOfPipe;
-    constexpr uint32_t colorInitial =  color | none | topOfPipe;
-    constexpr uint32_t depthInitial =  depth | none | topOfPipe;
+    constexpr uint32_t colorNone =  color | none | topOfPipe;
+    constexpr uint32_t depthNone =  depth | none | topOfPipe;
 }
 
 
@@ -77,12 +78,14 @@ namespace BarrierUsage {
 
 class BarrierManager {
     std::vector<vk::ImageMemoryBarrier2> imageBarriers;
+    std::vector<vk::BufferMemoryBarrier2> bufferBarriers;
 
     public:
     void begin() {
         imageBarriers.clear();
     };
     void transition(vk::Image image, uint32_t firstState, uint32_t secondState);
+    void transition(vk::Buffer buffer, float bufferSize, uint32_t firstState, uint32_t secondState);
     void commit(vk::raii::CommandBuffer &commandBuffer);
 
     private:

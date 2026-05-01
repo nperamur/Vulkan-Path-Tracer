@@ -31,7 +31,7 @@ Application* Application::app = nullptr;
 
 void Application::run() {
     setupWindow();
-    window = glfwCreateWindow(800, 600, "My Vulkan Triangle", NULL, NULL);
+    window = glfwCreateWindow(800, 600, "Vulkan Engine", NULL, NULL);
     if (!window) {
         glfwTerminate();
     }
@@ -44,7 +44,9 @@ void Application::cleanUp(GLFWwindow* window) {
     device->waitIdle();
     commandPool->reset();
     renderer -> cleanUp();
-    vmaDestroyImage(allocator, depthImage, depthImageAllocation);
+    for (int i = 0; i < 3; i++) {
+        vmaDestroyImage(allocator, depthImages[i], depthImageAllocations[i]);
+    }
     vmaDestroyAllocator(allocator);
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -72,7 +74,8 @@ void Application::loop(GLFWwindow* window) {
         }
         camera.handleInputs();
         commandBuffers->at(imageIndex).reset();
-        renderer -> render(commandBuffers->at(imageIndex), imageViews.at(imageIndex), depthImageView.value(), swapChain -> getImages().at(imageIndex), depthImage, currentFrame);
+        renderer -> render(commandBuffers->at(imageIndex), imageViews.at(imageIndex),
+            depthImageViews[currentFrame].value(), swapChain -> getImages().at(imageIndex), depthImages[currentFrame], currentFrame);
         draw(imageIndex, flagBits, currentFrame);
 
         uint32_t image = imageIndex;
@@ -281,11 +284,15 @@ void Application::setupDevices() {
     );
 
     //Logical device selection:
-    const char* enabledExtensions[8] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline", "VK_KHR_deferred_host_operations", "VK_KHR_ray_query", "VK_KHR_pipeline_library", "VK_KHR_buffer_device_address", "VK_EXT_descriptor_indexing"};
+    const char* enabledExtensions[9] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline",
+        "VK_KHR_deferred_host_operations", "VK_KHR_ray_query", "VK_KHR_pipeline_library", "VK_KHR_buffer_device_address", "VK_EXT_descriptor_indexing",
+    "VK_EXT_robustness2"};
     vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures(VK_TRUE);
     vk::PhysicalDeviceSynchronization2Features sync2Features(VK_TRUE);
     vk::PhysicalDeviceBufferDeviceAddressFeatures deviceAddressFeatures(VK_TRUE);
     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtFeatures{};
+    vk::PhysicalDeviceRobustness2FeaturesKHR robustnessFeatures{};
+    robustnessFeatures.nullDescriptor = VK_TRUE;
     rtFeatures.rayTracingPipeline = VK_TRUE;
     rtFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE; // optional
     rtFeatures.pNext = nullptr;
@@ -308,6 +315,8 @@ void Application::setupDevices() {
     sync2Features.setPNext(&deviceAddressFeatures);
     deviceAddressFeatures.setPNext(&rtFeatures);
     rtFeatures.setPNext(physicalDeviceAccelerationFeatures);
+    physicalDeviceAccelerationFeatures.setPNext(robustnessFeatures);
+
 
 
     device.emplace(*physicalDevice, deviceCreateInfo);
@@ -325,9 +334,12 @@ void Application::setupSwapChain() {
     if (capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0) return;
     imageViews.clear();
     swapChain.reset();
-    depthImageView = VK_NULL_HANDLE;
-    if (depthImage != VK_NULL_HANDLE) {
-        vmaDestroyImage(allocator, depthImage, depthImageAllocation);
+
+    for (int i = 0; i < 3; i++) {
+        depthImageViews[i] = VK_NULL_HANDLE;
+        if (depthImages[i] != VK_NULL_HANDLE) {
+            vmaDestroyImage(allocator, depthImages[i], depthImageAllocations[i]);
+        }
     }
     auto surfaceFormats = physicalDevice -> getSurfaceFormatsKHR(**surface);
 
@@ -412,44 +424,47 @@ void Application::createSwapChainImageViews() {
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
 
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.format = VK_FORMAT_D32_SFLOAT;;
-    imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    for (int i = 0; i < 3; i++) {
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = VK_FORMAT_D32_SFLOAT;;
+        imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    VmaAllocationCreateInfo allocInfo{};
-    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
 
 
 
-    vmaCreateImage(
-        allocator,
-        &imageInfo,
-        &allocInfo,
-        &depthImage,
-        &depthImageAllocation,
-        nullptr
-    );
+        vmaCreateImage(
+            allocator,
+            &imageInfo,
+            &allocInfo,
+            &depthImages[i],
+            &depthImageAllocations[i],
+            nullptr
+        );
 
-    vk::ImageViewCreateInfo viewInfo{};
-    viewInfo.image = depthImage;
-    viewInfo.viewType = vk::ImageViewType::e2D;
-    viewInfo.format = vk::Format::eD32Sfloat;
-    viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
-    depthImageView.emplace(device -> createImageView(viewInfo));
+        vk::ImageViewCreateInfo viewInfo{};
+        viewInfo.image = depthImages[i];
+        viewInfo.viewType = vk::ImageViewType::e2D;
+        viewInfo.format = vk::Format::eD32Sfloat;
+        viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+        depthImageViews[i].emplace(device -> createImageView(viewInfo));
+    }
+
 
 
 }

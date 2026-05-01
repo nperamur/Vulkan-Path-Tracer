@@ -25,26 +25,27 @@ layout(location = 0) rayPayloadEXT RayPayload rayPayload;
 void main() {
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT;
 
-    float tMin = 0.001f;
-    float tMax = 1.0f;
+    float tMin = 0.1;
+    float tMax = 1000.0f;
 
     const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
-
     float depth = texelFetch(depthBuffer, pixelCoords, 0).r;
-    vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy);
+    vec2 uv = vec2(gl_LaunchIDEXT.xy + 0.5) / vec2(gl_LaunchSizeEXT.xy);
     vec4 ndcPos = vec4(uv * 2.0 - 1.0, depth, 1.0);
     vec4 origin = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * ndcPos);
     origin /= origin.w;
+
+
     traceRayEXT(
         topLevelAS,
         rayFlags,
         0xFF,
         0,
-        1,
-        1,
+        0,
+        0,
         origin.xyz,
         tMin,
-        normalize(lightData.position).xyz,
+        normalize(lightData.position - origin).xyz,
         tMax,
         0
     );

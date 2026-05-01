@@ -22,6 +22,7 @@
 namespace Shaders {
     ID(triangle, "triangle")
     ID(raytracing, "raytracing")
+    ID(combineShader, "combineShader")
 }
 
 namespace StorageImages {
@@ -34,8 +35,8 @@ namespace RenderPassImages {
 
 
 struct InverseViewProj {
-    glm::mat4 inverseView;
-    glm::mat4 inverseProj;
+    alignas(16) glm::mat4 inverseView;
+    alignas(16) glm::mat4 inverseProj;
 };
 
 
@@ -67,6 +68,8 @@ class Renderer {
     // Geometry geometry;
 
     std::optional<TextureView> depthTextureView;
+    std::optional<TextureView> forwardPassTextureView;
+    std::array<TextureView, 3> rtTextureViews;
 
     InverseViewProj inverseViewProj;
 
@@ -75,12 +78,13 @@ class Renderer {
     std::optional<RenderPassImageViewManager> imageViewManager;
 
 
+    Model screenQuad;
 
     public:
 
     Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator* allocator);
 
-    void render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &imageView, vk::raii::ImageView &depthImageView, vk::Image
+    void render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &swapChainImageView, vk::raii::ImageView &depthImageView, vk::Image
                 &, VkImage depthImage, int frameIndex);
 
     void cleanUp();
@@ -90,10 +94,11 @@ private:
 
     void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, vk::Viewport viewport, vk::Rect2D rect2D);
     void presentationMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
-
+    void resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
     void renderingMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
     glm::mat4 createProjectionMatrix();
     void traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth);
+    void initScreenQuad(vk::raii::PhysicalDevice& physicalDevice);
 };
 
 

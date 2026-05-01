@@ -32,7 +32,7 @@ struct Image {
 };
 
 struct TextureView {
-    vk::raii::ImageView& imageView;
+    vk::ImageView imageView;
     std::optional<vk::raii::Sampler> sampler;
 };
 
@@ -83,10 +83,12 @@ class ShaderPipeline {
 
         const std::vector<Image>& getStorageImages() const;
 
+        Image& getStorageImage(std::string identifier, int frameIndex);
+
         virtual void cleanUp();
 
         const std::string getIdentifier() const;
-
+        vk::Buffer& getUniformBuffer(DescriptorBinding binding, int frameIndex);
 
         virtual void bind(vk::raii::CommandBuffer& cmd, int frameIndex) = 0;
         void setTextureSampler(DescriptorBinding descriptorBinding, TextureView &image, vk::ImageLayout imageLayout, int frameIndex) const;
