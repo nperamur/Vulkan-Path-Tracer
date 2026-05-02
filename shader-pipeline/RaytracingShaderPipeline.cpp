@@ -10,8 +10,8 @@
 struct AccelerationStructureData;
 
 RaytracingShaderPipeline::RaytracingShaderPipeline(std::string string, vk::raii::Device &device,vk::raii::PhysicalDevice &physicalDevice,
-                                                   vk::Format &swapChainImageFormat, VmaAllocator&allocator, DescriptorsInfo desc
-) : ShaderPipeline(string, device, swapChainImageFormat, allocator, desc) {
+                                                   VmaAllocator&allocator, DescriptorsInfo desc
+) : ShaderPipeline(string, device, allocator, desc) {
     setUpDescriptors();
     this -> physicalDevice = physicalDevice;
     ShaderProgram rayGen(string + "Raygen.rgen.spv", &device, vk::ShaderStageFlagBits::eRaygenKHR);

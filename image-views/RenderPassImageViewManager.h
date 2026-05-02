@@ -25,7 +25,7 @@ class RenderPassImageViewManager {
 
     Image& getImage(const std::string &id);
 
-    void registerImage(std::string id, int width, int height);
+    void registerImage(std::string id, VkFormat format, int width, int height);
 
     void resizeImage(std::string id, int width, int height);
 

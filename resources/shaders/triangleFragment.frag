@@ -16,5 +16,6 @@ layout(set = 0, binding = 0) uniform LightUBO {
 void main() {
     float diffuse = max(dot(normalize(passNormal), normalize(lightData.position.rgb)), 0);
     vec4 ambient = vec4(vec3(0.2), 1.0);
+
     outColor = min(colors.color * diffuse * lightData.color + ambient * colors.color * lightData.color, 1.0);
 }

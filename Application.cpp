@@ -299,6 +299,8 @@ void Application::setupDevices() {
     vk::PhysicalDeviceAccelerationStructureFeaturesKHR physicalDeviceAccelerationFeatures{};
     physicalDeviceAccelerationFeatures.accelerationStructure = VK_TRUE;
     physicalDeviceAccelerationFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
+    vk::PhysicalDeviceFeatures2 physicalDeviceFeatures{};
+    physicalDeviceFeatures.features.geometryShader = VK_TRUE;
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,
@@ -316,6 +318,7 @@ void Application::setupDevices() {
     deviceAddressFeatures.setPNext(&rtFeatures);
     rtFeatures.setPNext(physicalDeviceAccelerationFeatures);
     physicalDeviceAccelerationFeatures.setPNext(robustnessFeatures);
+    robustnessFeatures.setPNext(physicalDeviceFeatures);
 
 
 

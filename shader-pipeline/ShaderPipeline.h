@@ -28,6 +28,7 @@ struct Image {
     vk::raii::ImageView imageView;
     vk::raii::Sampler sampler;
     std::string identifier;
+    VkFormat format;
     int frameIndex;
 };
 
@@ -57,7 +58,6 @@ class ShaderPipeline {
     protected:
         const VmaAllocator* allocator;
         vk::raii::Device* device;
-        vk::Format* swapChainImageFormat;
         std::array<std::vector<vk::raii::DescriptorSet>, 3> descriptorSets;
         std::optional<vk::raii::DescriptorSetLayout> onceAddedLayout;
         std::optional<vk::raii::DescriptorSetLayout> perFrameLayout;
@@ -74,7 +74,7 @@ class ShaderPipeline {
         virtual ~ShaderPipeline() = default;
 
 
-        ShaderPipeline(std::string str, vk::raii::Device &device, vk::Format &swapChainImageFormat, VmaAllocator &allocator,
+        ShaderPipeline(std::string str, vk::raii::Device &device,  VmaAllocator &allocator,
                        DescriptorsInfo desc);
 
         void setUniform(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex);

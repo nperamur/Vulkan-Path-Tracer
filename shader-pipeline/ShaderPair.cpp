@@ -1,12 +1,13 @@
 #include "ShaderPair.h"
 
-ShaderPair::ShaderPair(std::string str, vk::raii::Device& device, vk::Format& swapChainImageFormat, VmaAllocator& allocator, DescriptorsInfo desc, int numColorAttachments) : ShaderPipeline(str, device, swapChainImageFormat, allocator, desc) {
+ShaderPair::ShaderPair(std::string str, vk::raii::Device& device, std::vector<vk::Format> imageFormats, VmaAllocator& allocator, DescriptorsInfo desc, int numColorAttachments) : ShaderPipeline(str, device, allocator, desc) {
     setUpDescriptors();
     ShaderProgram vertex(str + "Vertex.vert.spv", &device, vk::ShaderStageFlagBits::eVertex);
     ShaderProgram fragment(str + "Fragment.frag.spv", &device, vk::ShaderStageFlagBits::eFragment);
     shaders.push_back(std::move(vertex));
     shaders.push_back(std::move(fragment));
     this -> numColorAttachments = numColorAttachments;
+    this -> imageFormats = imageFormats;
     ShaderPair::setUpPipeline();
 }
 
@@ -17,7 +18,7 @@ ShaderPair::ShaderPair(std::string str, vk::raii::Device& device, vk::Format& sw
 
 
 void ShaderPair::setUpPipeline() {
-    rasterPipeline.emplace(0, numColorAttachments, swapChainImageFormat, vk::Format::eD32Sfloat);
+    rasterPipeline.emplace(0, numColorAttachments, imageFormats.data(), vk::Format::eD32Sfloat);
     uint32_t count =
         ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers) ? 1 : 0) +
         ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers) ? 1 : 0);
@@ -75,19 +76,23 @@ void ShaderPair::setUpPipeline() {
 
     std::vector<vk::PipelineShaderStageCreateInfo> info = getStageCreateInfos();
 
-    vk::PipelineColorBlendAttachmentState blendAttachment(VK_FALSE);
-    blendAttachment.colorWriteMask =
-        vk::ColorComponentFlagBits::eR |
-        vk::ColorComponentFlagBits::eG |
-        vk::ColorComponentFlagBits::eB |
-        vk::ColorComponentFlagBits::eA;
+    std::vector<vk::PipelineColorBlendAttachmentState> blendAttachments;
+    for (int i = 0; i < numColorAttachments; i++) {
+        vk::PipelineColorBlendAttachmentState blendAttachment(VK_FALSE);
+        blendAttachment.colorWriteMask =
+            vk::ColorComponentFlagBits::eR |
+            vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB |
+            vk::ColorComponentFlagBits::eA;
+        blendAttachments.push_back(blendAttachment);
+    }
 
     vk::PipelineColorBlendStateCreateInfo colorBlendInfo(
         {},
         VK_FALSE,
         vk::LogicOp::eCopy,
-        1,
-        &blendAttachment
+        numColorAttachments,
+        blendAttachments.data()
     );
 
     vk::PipelineMultisampleStateCreateInfo multisampleInfo(

@@ -4,9 +4,8 @@
 #include <cstring>
 #include <vk_mem_alloc.h>
 
-ShaderPipeline::ShaderPipeline(std::string str, vk::raii::Device& device, vk::Format& swapChainImageFormat, VmaAllocator& allocator, DescriptorsInfo desc) {
+ShaderPipeline::ShaderPipeline(std::string str, vk::raii::Device& device,  VmaAllocator& allocator, DescriptorsInfo desc) {
     this->device = &device;
-    this->swapChainImageFormat = &swapChainImageFormat;
     this->allocator = &allocator;
     this->desc = desc;
     this->identifier = str;

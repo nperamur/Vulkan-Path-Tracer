@@ -15,19 +15,25 @@
 
 static inline void begin_render_pass(
     vk::CommandBuffer cmd,
-    vk::ImageView colorView,
+    int numColorAttachments, std::vector<vk::ImageView> colorViews,
     vk::ImageView const* depthView,
-    vk::Extent2D extent)
-{
-    vk::RenderingAttachmentInfo colorAttachment(
-        colorView,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ResolveModeFlagBits::eNone,
-        {}, {},
-        vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore,
-        vk::ClearValue{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}}
-    );
+    vk::Extent2D extent) {
+
+    std::vector<vk::RenderingAttachmentInfo> colorAttachments;
+    for (int i = 0; i < numColorAttachments; i++) {
+        vk::RenderingAttachmentInfo colorAttachment(
+            colorViews[i],
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ResolveModeFlagBits::eNone,
+            {}, {},
+            vk::AttachmentLoadOp::eClear,
+            vk::AttachmentStoreOp::eStore,
+            vk::ClearValue{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}}
+        );
+
+        colorAttachments.push_back(colorAttachment);
+
+    }
 
     vk::RenderingAttachmentInfo depthAttachment;
     if (depthView) {
@@ -45,7 +51,7 @@ static inline void begin_render_pass(
     vk::RenderingInfo renderingInfo(
         {},
         vk::Rect2D({0, 0}, extent),
-        1, 0, 1, &colorAttachment,
+        1, 0, numColorAttachments, colorAttachments.data(),
         depthView ? &depthAttachment : nullptr,
         nullptr
     );
@@ -75,7 +81,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                        swapChainImageFormat, *allocator, triangleDescriptorsInfo, 1));
+                                        std::vector<vk::Format>{swapChainImageFormat}, *allocator, triangleDescriptorsInfo, 1));
 
     std::vector<float> triangleVertices = {
         0.0f, -1.0f, 0.0f,
@@ -114,7 +120,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this->accelStructureManager = AccelerationStructureManager(device, physicalDevice, &*allocator);
     accelStructureManager -> build(entities, mvp);
     std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device,
-                                                            physicalDevice, swapChainImageFormat, *allocator, raytracingDescriptorsInfo);
+                                                            physicalDevice, *allocator, raytracingDescriptorsInfo);
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
     RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
 
@@ -124,8 +130,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
-    imageViewManager -> registerImage(RenderPassImages::baseForwardPass, width, height);
-
+    imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
 
 
     DescriptorsInfo combineShadersDescriptorsInfo = {
@@ -133,7 +138,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         .dynamicData = {.numUBOs = 0, .numTextureSamplers = 0}
     };
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
-                                    swapChainImageFormat, *allocator, combineShadersDescriptorsInfo, 1));
+                                    std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, combineShadersDescriptorsInfo, 1));
 
     initScreenQuad(physicalDevice);
 
@@ -176,7 +181,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     barrierManager -> commit(commandBuffer);
 
     //Base Forward Pass
-    begin_render_pass(commandBuffer, this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass).imageView, &*depthImageView, *swapChainExtent);
+    begin_render_pass(commandBuffer, 1, {baseForwardPassImage -> imageView}, &*depthImageView, *swapChainExtent);
     triangleShader -> bind(commandBuffer, frameIndex);
 
     float time = glfwGetTime();
@@ -258,7 +263,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     barrierManager -> commit(commandBuffer);
 
     //Post-process pass
-    begin_render_pass(commandBuffer, swapChainImageView, nullptr, *swapChainExtent);
+    begin_render_pass(commandBuffer, 1, {swapChainImageView}, nullptr, *swapChainExtent);
     combineShaders -> bind(commandBuffer, frameIndex);
     renderModel(commandBuffer, screenQuad, viewport, rect2D);
     commandBuffer.endRendering();
@@ -310,14 +315,15 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
         device->waitIdle();
         Application::get() -> resetAllCommandBuffers();
 
-        this->depthTextureView.reset();
-        this->depthTextureView.emplace(TextureView{.imageView = *depthImageView});
         this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
         this->forwardPassTextureView.reset();
         this->forwardPassTextureView.emplace(TextureView{.imageView = this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass).imageView});
+
     }
     if (numFramesSinceResize < 3) {
-        rtShaderPipeline -> setTextureSampler({0, 1}, *depthTextureView, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
+        depthTextureViews[frameIndex] = TextureView{.imageView = depthImageView};
+
+        rtShaderPipeline -> setTextureSampler({0, 1}, depthTextureViews[frameIndex], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
         rtShaderPipeline -> setStorageImage({0, 2}, width, height, frameIndex, StorageImages::raytracingOutput);
 
         combineShaders -> setTextureSampler({0, 0}, *forwardPassTextureView,

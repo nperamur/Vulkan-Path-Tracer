@@ -67,7 +67,7 @@ class Renderer {
     MVP mvp;
     // Geometry geometry;
 
-    std::optional<TextureView> depthTextureView;
+    std::array<TextureView, 3> depthTextureViews;
     std::optional<TextureView> forwardPassTextureView;
     std::array<TextureView, 3> rtTextureViews;
 

@@ -28,7 +28,7 @@ class RaytracingShaderPipeline : public ShaderPipeline {
 
     public:
         RaytracingShaderPipeline(std::string string, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice,
-                             vk::Format &swapChainImageFormat, VmaAllocator &allocator, DescriptorsInfo desc);
+                              VmaAllocator &allocator, DescriptorsInfo desc);
 
         void cleanUp() override;
 
