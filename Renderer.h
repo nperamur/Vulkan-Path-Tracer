@@ -10,11 +10,11 @@
 #include "glm/fwd.hpp"
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_transform.hpp"
-#include "Entity.h"
 #include "shader-pipeline/RaytracingShaderPipeline.h"
 #include "raytracing/AccelerationStructureManager.h"
 #include "VulkanCommon.h"
 #include "image-views/RenderPassImageViewManager.h"
+#include "scene/SceneManager.h"
 
 #include "syncronization/BarrierManager.h"
 #define ID(name, str) inline constexpr const char* name = str;
@@ -58,7 +58,7 @@ class Renderer {
     const vk::Format* swapChainImageFormat;
     const vk::Extent2D* swapChainExtent;
 
-    std::vector<Entity> entities;
+    std::optional<SceneManager> sceneManager;
 
     std::optional<vk::RenderingInfo> renderingInfo;
     Light light;
@@ -79,6 +79,7 @@ class Renderer {
 
     Model screenQuad;
 
+
     public:
 
     Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Device &device, vk::Format &swapChainImageFormat, vk::Extent2D& swapChainExtent, vk::raii::PhysicalDevice& physicalDevice, VmaAllocator* allocator);
@@ -90,11 +91,8 @@ class Renderer {
 
 
 private:
-    void createShaderPipelines( vk::raii::PhysicalDevice& physicalDevice);
     void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, vk::Viewport viewport, vk::Rect2D rect2D);
-    void presentationMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
     void resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
-    void renderingMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
     glm::mat4 createProjectionMatrix();
     void traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth);
     void initScreenQuad(vk::raii::PhysicalDevice& physicalDevice);

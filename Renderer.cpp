@@ -85,22 +85,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
-    // std::vector<float> triangleVertices = {
-    //     0.0f, -1.0f, 0.0f,
-    //     1.0f,  1.0f, 0.0f,
-    //    -1.0f,  1.0f, 0.0f,
-    // };
-    // std::vector<float> triangleNormals = {
-    //     0.0f, 0.0f, 1.0f,
-    //     0.0f, 0.0f, 1.0f,
-    //     0.0f, 0.0f, 1.0f,
-    // };
-    // std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
-    //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, std::nullopt, device, physicalDevice), mvp.transformation);
-
-    ModelLoader modelLoader;
-    entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), mvp.transformation);
-    entities[entities.size() - 1].setScale(glm::vec3(0.02, 0.02, 0.02));
+    sceneManager.emplace(loader, device, physicalDevice, mvp);
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
                                             std::vector<vk::Format>{swapChainImageFormat}, *allocator, triangleDescriptorsInfo, 1));
@@ -113,7 +98,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         .dynamicData = {.numUBOs = 2}
     };
     this->accelStructureManager = AccelerationStructureManager(device, physicalDevice, &*allocator);
-    accelStructureManager -> build(entities, mvp);
+    accelStructureManager -> build(sceneManager -> getEntities(), mvp);
     std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device,
                                                             physicalDevice, *allocator, raytracingDescriptorsInfo);
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
@@ -188,19 +173,13 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     data.color = glm::vec4(std::sin(time * 1.0f) * 0.5f + 0.5f, std::sin(time * 1.3f) * 0.5f + 0.5f, std::sin(time * 1.7f) * 0.5f + 0.5f, 1.0f);
     triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
 
-
     mvp.view = Application::get() -> getCamera().createViewMatrix();
-    for (Entity& entity : entities) {
-        if (entity.getIdentifier() == "triangle") {
-            entity.setRotation(glm::vec3(0.0f, time, 0.0f));
-        } else if (entity.getIdentifier() == "sponza") {
-            entity.setScale(glm::vec3(0.02, 0.02, 0.02));
-        }
-        entity.updateTransformationMatrix();
-        triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex);
-        renderModel(commandBuffer, entity.getModel(), viewport, rect2D);
 
-    }
+    sceneManager -> updateAndDrawEntities([this, triangleShader, frameIndex]() {
+        triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex);
+    }, [&commandBuffer, viewport, rect2D, this](Entity& entity) {
+        renderModel(commandBuffer, entity.getModel(), viewport, rect2D);
+    });
 
 
     commandBuffer.endRendering();

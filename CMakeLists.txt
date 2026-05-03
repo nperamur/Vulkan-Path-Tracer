@@ -53,6 +53,8 @@ add_executable(vulkan_test Application.cpp Application.h
     syncronization/BarrierManager.h
         image-views/RenderPassImageViewManager.cpp
         image-views/RenderPassImageViewManager.h
+        scene/SceneManager.cpp
+        scene/SceneManager.h
 )
 target_link_libraries(vulkan_test PRIVATE glfw glm)
 
