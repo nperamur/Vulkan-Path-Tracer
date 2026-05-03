@@ -2,7 +2,10 @@
 #include "AccelerationStructureManager.h"
 
 #include <cstdint>
-
+/**
+ * @Author Neelesh Peramur
+ * This class owns and manages the lifecycle of ray-tracing acceleration structures in the engine
+ */
 
 
 
@@ -15,9 +18,22 @@ AccelerationStructureManager::AccelerationStructureManager(vk::raii::Device &dev
 
 }
 
+/**
+ * Given the entities, this method builds the acceleration structure used for ray-tracing
+ */
+void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
+    buildBLASGeometry(entities);
+    buildBLAS();
+    buildTLASGeometry(blasData, entities, &mvp);
+    buildTLAS();
+
+}
 
 
 
+/**
+ * Builds the bottom-level acceleration structure
+ */
 void AccelerationStructureManager::buildBLAS() {
     for (int i = 0; i < geometry.blasGeometry.size(); i++) {
         AccelerationStructureData accelStructureData = {.handle = nullptr, .buffer = nullptr, .allocation = nullptr, .deviceAddress = 0};
@@ -35,6 +51,9 @@ void AccelerationStructureManager::buildBLAS() {
     }
 }
 
+/**
+ * Builds the top-level acceleration structure
+ */
 void AccelerationStructureManager::buildTLAS() {
     buildAccelerationStructure(
         vk::AccelerationStructureTypeKHR::eTopLevel,
@@ -47,8 +66,12 @@ void AccelerationStructureManager::buildTLAS() {
     );
 }
 
-//TODO: Make storage image
 
+/**
+ * A helper for building the acceleration structure that configures build info, manages the scratch allocation
+ * and sends the acceleration structure data to the gpu using the command buffer, and finally
+ * updating passed-in acceleration structure allocation pointers when done
+ */
 void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
     vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
         vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(
@@ -160,6 +183,10 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
 
 
 
+/**
+ * Builds the geometry of the Top-Level acceleration structure. In doing so, we create a instance buffer to
+ * retrieve the geometry and update the Geometry struct accordingly.
+ */
 void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP* mvp) {
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
     int i = 0;
@@ -220,7 +247,10 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
 }
 
 
-
+/**
+ * Builds the geometry of the Bottom-Level acceleration structure. In doing so, we upload our vertex & index buffer addresses
+ * and update our Blas Geometry.
+ */
 void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity>& entities) {
     geometry.tlasGeometry.primitiveCount = entities.size();
 
@@ -271,11 +301,6 @@ void AccelerationStructureManager::cleanUp() {
     vmaDestroyBuffer(*allocator, instanceBuffer, instanceAllocation);
 }
 
-void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
-    buildBLASGeometry(entities);
-    buildBLAS();
-    buildTLASGeometry(blasData, entities, &mvp);
-    buildTLAS();
 
-}
+
 

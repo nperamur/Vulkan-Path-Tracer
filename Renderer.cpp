@@ -72,47 +72,42 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> swapChainImageFormat = &swapChainImageFormat;
     this -> swapChainExtent = &swapChainExtent;
     this -> device = &device;
+    this -> allocator = allocator;
+    this -> mvp = {.transformation = glm::mat4(1.0f), .view = Application::get() -> getCamera().createViewMatrix(), .projection = createProjectionMatrix()};
+    this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
+    this -> imageViewManager.emplace(allocator, device);
+    this -> barrierManager.emplace();
+    light.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
+    light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
+
     DescriptorsInfo triangleDescriptorsInfo = {
         .staticData = {.numUBOs = 1, .numTextureSamplers = 0},
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
-    this -> imageViewManager.emplace(allocator, device);
-    this -> barrierManager.emplace();
-
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
-    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                        std::vector<vk::Format>{swapChainImageFormat}, *allocator, triangleDescriptorsInfo, 1));
-
-    std::vector<float> triangleVertices = {
-        0.0f, -1.0f, 0.0f,
-        1.0f,  1.0f, 0.0f,
-       -1.0f,  1.0f, 0.0f,
-    };
-    std::vector<float> triangleNormals = {
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-    };
-    std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
+    // std::vector<float> triangleVertices = {
+    //     0.0f, -1.0f, 0.0f,
+    //     1.0f,  1.0f, 0.0f,
+    //    -1.0f,  1.0f, 0.0f,
+    // };
+    // std::vector<float> triangleNormals = {
+    //     0.0f, 0.0f, 1.0f,
+    //     0.0f, 0.0f, 1.0f,
+    //     0.0f, 0.0f, 1.0f,
+    // };
+    // std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
     //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, std::nullopt, device, physicalDevice), mvp.transformation);
-    this -> mvp = {.transformation = glm::mat4(1.0f), .view = Application::get() -> getCamera().createViewMatrix(), .projection = createProjectionMatrix()};
-    this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
 
     ModelLoader modelLoader;
     entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), mvp.transformation);
     entities[entities.size() - 1].setScale(glm::vec3(0.02, 0.02, 0.02));
 
-
-    this->allocator = allocator;
-
-
-    light.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
-    light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
+                                            std::vector<vk::Format>{swapChainImageFormat}, *allocator, triangleDescriptorsInfo, 1));
 
     this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({.set = 0, .binding = 0}, &light, sizeof(light),  0);
 
     //raytracing
-    // this -> geometry = {};
     DescriptorsInfo raytracingDescriptorsInfo = {
         .staticData = {.numTextureSamplers = 1, .numAccelerationStructures = 1, .numStorageImages = 1},
         .dynamicData = {.numUBOs = 2}
@@ -124,14 +119,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
     RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
 
-    for (int i = 0; i < 3; i++) {
-        rtShader->setAccelerationStructure({0, 0}, accelStructureManager -> getTLASData(), i);
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
+        rtShader->setAccelerationStructure(RTShaderSlots::accelerationStructure, accelStructureManager -> getTLASData(), i);
     }
-
-    int width, height;
-    glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
-    imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-
 
     DescriptorsInfo combineShadersDescriptorsInfo = {
         .staticData = {.numUBOs = 0, .numTextureSamplers = 2},
@@ -139,6 +129,12 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     };
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
                                     std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, combineShadersDescriptorsInfo, 1));
+
+
+
+    int width, height;
+    glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
+    imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
 
     initScreenQuad(physicalDevice);
 
@@ -157,7 +153,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     resizeImageViews(combineShaders, rtShaderPipeline, depthImageView, width, height, frameIndex);
 
 
-    Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass));
+    Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
 
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D(
@@ -172,7 +168,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
         nullptr
     );
     commandBuffer.begin(beginInfo);
-    // renderingMemoryBarrier(commandBuffer, swapChainImage, depthImage);
 
 
     barrierManager -> begin();
@@ -185,31 +180,13 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     triangleShader -> bind(commandBuffer, frameIndex);
 
     float time = glfwGetTime();
-    // float speed = 0.2f;
-    //
-    // float angle = time * speed;
-    //
-    // float c = cos(angle);
-    // float s = sin(angle);
-    //
-    // float a = glm::radians(15.0);
-    // float ca = cos(a);
-    // float sa = sin(a);
-    //
-    // glm::vec3 dir = glm::normalize(glm::vec3(
-    //     c * ca - s * sa,
-    //     abs(c),
-    //     s * ca + c * sa
-    // ));
-    //
-    // light.position = glm::vec4(dir * 2000.0f, 1.0f);
 
     struct TriangleUBO {
         glm::vec4 color;
     };
     TriangleUBO data;
     data.color = glm::vec4(std::sin(time * 1.0f) * 0.5f + 0.5f, std::sin(time * 1.3f) * 0.5f + 0.5f, std::sin(time * 1.7f) * 0.5f + 0.5f, 1.0f);
-    triangleShader -> setUniform({.set = 1,.binding = 0}, &data, sizeof(data), frameIndex);
+    triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
 
 
     mvp.view = Application::get() -> getCamera().createViewMatrix();
@@ -220,7 +197,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
             entity.setScale(glm::vec3(0.02, 0.02, 0.02));
         }
         entity.updateTransformationMatrix();
-        triangleShader -> setUniform({.set = 1, .binding = 1}, &mvp, sizeof(mvp), frameIndex);
+        triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex);
         renderModel(commandBuffer, entity.getModel(), viewport, rect2D);
 
     }
@@ -235,12 +212,12 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     //Raytracing Pass
     rtShaderPipeline -> bind(commandBuffer, frameIndex);
-    rtShaderPipeline -> setUniform({.set = 1, .binding = 0}, &light, sizeof(light), frameIndex);
-    rtShaderPipeline -> setUniform({.set = 1, .binding = 1}, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
+    rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
+    rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
 
     barrierManager -> begin();
     barrierManager -> transition(depthImage, BarrierUsage::depthWrite, BarrierUsage::depthRead);
-    barrierManager -> transition(rtShaderPipeline -> getUniformBuffer({.set = 1, .binding = 1}, frameIndex),
+    barrierManager -> transition(rtShaderPipeline -> getUniformBuffer(RTShaderSlots::inverseViewProj, frameIndex),
          sizeof(inverseViewProj),  ResourceStages::hostStage | ResourceAccess::write | ResourceType::ubo,
          ResourceAccess::read | ResourceType::ubo | ResourceStages::raytracing);
 
@@ -249,7 +226,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
             ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing);
 
     barrierManager -> commit(commandBuffer);
-
     this -> traceRays(commandBuffer, viewport, rect2D, width, height, 1);
 
 
@@ -316,22 +292,21 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
         Application::get() -> resetAllCommandBuffers();
 
         this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
-        this->forwardPassTextureView.reset();
-        this->forwardPassTextureView.emplace(TextureView{.imageView = this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass).imageView});
 
     }
-    if (numFramesSinceResize < 3) {
+    if (numFramesSinceResize < Config::maxFramesInFlight) {
         depthTextureViews[frameIndex] = TextureView{.imageView = depthImageView};
 
-        rtShaderPipeline -> setTextureSampler({0, 1}, depthTextureViews[frameIndex], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
-        rtShaderPipeline -> setStorageImage({0, 2}, width, height, frameIndex, StorageImages::raytracingOutput);
+        rtShaderPipeline -> setTextureSampler(RTShaderSlots::depthBuffer, depthTextureViews[frameIndex], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
+        rtShaderPipeline -> setStorageImage(RTShaderSlots::rtOutput, width, height, frameIndex, StorageImages::raytracingOutput);
 
-        combineShaders -> setTextureSampler({0, 0}, *forwardPassTextureView,
+        TextureView* textureView = this->imageViewManager->getTextureView(RenderPassImages::baseForwardPass, frameIndex);
+        combineShaders -> setTextureSampler(CombineShaderSlots::firstImage, *textureView,
                                          vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
         rtTextureViews[frameIndex] = TextureView{.imageView = rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).imageView};
 
-        combineShaders -> setTextureSampler({0, 1}, (rtTextureViews[frameIndex]), vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+        combineShaders -> setTextureSampler(CombineShaderSlots::secondImage, (rtTextureViews[frameIndex]), vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
     }
     numFramesSinceResize++;
 }

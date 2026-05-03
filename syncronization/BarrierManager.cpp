@@ -2,8 +2,18 @@
 #include "BarrierManager.h"
 
 #include <vulkan/vulkan_raii.hpp>
+/**
+ *@Author: Neelesh Peramur
+ */
 
 
+
+/**
+ * Transitions the image state by staging a memory barrier
+ * @param image the image to transition
+ * @param firstState the initial state. Can be constructed using the barrier usage namespace for simplicity or the bit-masked Resource enums for more control
+ * @param secondState the final state to transition to. Can be constructed using the barrier usage namespace for simplicity or the bit-masked Resource for more control
+ */
 void BarrierManager::transition(vk::Image image, uint32_t firstState, uint32_t secondState) {
     vk::ImageMemoryBarrier2 barrier(
         resolveStage(firstState),
@@ -21,6 +31,12 @@ void BarrierManager::transition(vk::Image image, uint32_t firstState, uint32_t s
 }
 
 
+/**
+ * Transitions the buffer state by staging a memory barrier
+ * @param buffer the buffer to transition
+ * @param firstState the initial state. Can be constructed using the barrier usage namespace for simplicity or the bit-masked Resource for more control
+ * @param secondState the final state to transition to. Can be constructed using the barrier usage namespace for simplicity or the bit-masked Resource for more control
+ */
 void BarrierManager::transition(vk::Buffer buffer, float bufferSize, uint32_t firstState, uint32_t secondState) {
     vk::BufferMemoryBarrier2 barrier(
     resolveStage(firstState),
@@ -36,12 +52,17 @@ void BarrierManager::transition(vk::Buffer buffer, float bufferSize, uint32_t fi
 
 
 
+/**
+ * Uploads all the staged memory barriers to the command buffer
+ * @param commandBuffer the command buffer
+ */
 void BarrierManager::commit(vk::raii::CommandBuffer& commandBuffer) {
     vk::DependencyInfo depInfo({}, {}, bufferBarriers, imageBarriers);
     commandBuffer.pipelineBarrier2(depInfo);
     imageBarriers.clear();
     bufferBarriers.clear();
 }
+
 
 vk::PipelineStageFlagBits2 BarrierManager::resolveStage(uint32_t state) {
     if (state & topOfPipe) return vk::PipelineStageFlagBits2::eTopOfPipe;

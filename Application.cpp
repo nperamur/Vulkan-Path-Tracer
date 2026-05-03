@@ -44,7 +44,7 @@ void Application::cleanUp(GLFWwindow* window) {
     device->waitIdle();
     commandPool->reset();
     renderer -> cleanUp();
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
         vmaDestroyImage(allocator, depthImages[i], depthImageAllocations[i]);
     }
     vmaDestroyAllocator(allocator);
@@ -80,7 +80,7 @@ void Application::loop(GLFWwindow* window) {
 
         uint32_t image = imageIndex;
         present(&image, currentFrame);
-        currentFrame = (currentFrame + 1) % 3;
+        currentFrame = (currentFrame + 1) % Config::maxFramesInFlight;
         double currentTime = glfwGetTime();
         double deltaTime = currentTime - lastTime;
         // printf("FPS:%f\n", 1/deltaTime);
@@ -338,7 +338,7 @@ void Application::setupSwapChain() {
     imageViews.clear();
     swapChain.reset();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
         depthImageViews[i] = VK_NULL_HANDLE;
         if (depthImages[i] != VK_NULL_HANDLE) {
             vmaDestroyImage(allocator, depthImages[i], depthImageAllocations[i]);
@@ -397,7 +397,7 @@ void Application::setupSwapChain() {
     renderFinishedSemaphores.clear();
     imageAvailableSemaphores.clear();
     syncHostWithDeviceFences.clear();
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
         imageAvailableSemaphores.emplace_back(*device, semaphoreInfo);
         renderFinishedSemaphores.emplace_back(*device, semaphoreInfo);
         imageAvailableFences.emplace_back(*device, fenceInfo);
@@ -427,7 +427,7 @@ void Application::createSwapChainImageViews() {
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -487,7 +487,7 @@ void Application::createCommandPool() {
 
 
 void Application::createCommandBuffers() {
-    vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary,3);
+    vk::CommandBufferAllocateInfo allocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, Config::maxFramesInFlight);
     commandBuffers = vk::raii::CommandBuffers(*device, allocInfo);
 }
 

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "../VulkanCommon.h"
 #include "../shader-pipeline/ShaderPipeline.h"
 
 namespace vk::raii {
@@ -17,19 +18,23 @@ class RenderPassImageViewManager {
 
     std::vector<Image> images;
 
+    std::unordered_map<std::string, std::array<TextureView, Config::maxFramesInFlight>> textureViews;
+
 
 
     public:
 
     RenderPassImageViewManager(VmaAllocator* allocator, vk::raii::Device& device);
 
-    Image& getImage(const std::string &id);
+    Image& getImage(const std::string &id, int frameIndex);
 
     void registerImage(std::string id, VkFormat format, int width, int height);
 
     void resizeImage(std::string id, int width, int height);
 
-    void cleanUp();
+    TextureView* getTextureView(std::string id, int frameIndex);
+
+    void cleanUp() const;
 };
 
 

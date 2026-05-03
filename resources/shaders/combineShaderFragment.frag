@@ -1,6 +1,6 @@
 #version 450
-layout(binding = 0) uniform sampler2D firstColor;
-layout(binding = 1) uniform sampler2D secondColor;
+layout(set = 0, binding = 0) uniform sampler2D firstColor;
+layout(set = 0, binding = 1) uniform sampler2D secondColor;
 
 layout(location = 0) out vec4 outColor;
 layout(location = 0) in vec2 passTextureCoords;

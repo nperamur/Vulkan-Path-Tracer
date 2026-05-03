@@ -67,9 +67,8 @@ class Renderer {
     MVP mvp;
     // Geometry geometry;
 
-    std::array<TextureView, 3> depthTextureViews;
-    std::optional<TextureView> forwardPassTextureView;
-    std::array<TextureView, 3> rtTextureViews;
+    std::array<TextureView, Config::maxFramesInFlight> depthTextureViews;
+    std::array<TextureView, Config::maxFramesInFlight> rtTextureViews;
 
     InverseViewProj inverseViewProj;
 
@@ -91,7 +90,7 @@ class Renderer {
 
 
 private:
-
+    void createShaderPipelines( vk::raii::PhysicalDevice& physicalDevice);
     void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, vk::Viewport viewport, vk::Rect2D rect2D);
     void presentationMemoryBarrier(vk::raii::CommandBuffer &commandBuffer, vk::Image &image, VkImage &depthImage);
     void resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
