@@ -1,8 +1,8 @@
-#include "Renderer.h"
 
-#include "Application.h"
-#include "Loader.h"
-#include "ModelLoader.h"
+
+#include "../Application.h"
+#include "../Loader.h"
+#include "../ModelLoader.h"
 #include "GLFW/glfw3.h"
 #include "glm/fwd.hpp"
 #include "glm/vec4.hpp"
@@ -10,8 +10,8 @@
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtx/dual_quaternion.hpp"
-#include "shader-pipeline/RaytracingShaderPipeline.h"
-#include "VulkanCommon.h"
+#include "../shader-pipeline/RaytracingShaderPipeline.h"
+#include "../VulkanCommon.h"
 
 static inline void begin_render_pass(
     vk::CommandBuffer cmd,
@@ -141,93 +141,75 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
 
     mvp.projection = createProjectionMatrix();
-    vk::Rect2D rect2D(
-    {0, 0}, *swapChainExtent
-    );
+    vk::Rect2D rect2D({0, 0}, *swapChainExtent);
     vk::Viewport viewport(
         0.0f, 0.0f, (float)swapChainExtent->width,
         (float)swapChainExtent->height, 0.0f, 1.0f
     );
-    vk::CommandBufferBeginInfo beginInfo(
-        {},
-        nullptr
-    );
+    vk::CommandBufferBeginInfo beginInfo({}, nullptr);
     commandBuffer.begin(beginInfo);
 
-
-    barrierManager -> begin();
-    barrierManager -> transition(baseForwardPassImage -> image, BarrierUsage::colorNone, BarrierUsage::colorWrite);
-    barrierManager -> transition(depthImage, BarrierUsage::depthNone, BarrierUsage::depthWrite);
-    barrierManager -> commit(commandBuffer);
-
-    //Base Forward Pass
-    begin_render_pass(commandBuffer, 1, {baseForwardPassImage -> imageView}, &*depthImageView, *swapChainExtent);
-    triangleShader -> bind(commandBuffer, frameIndex);
-
+    mvp.view = Application::get() -> getCamera().createViewMatrix();
     float time = glfwGetTime();
 
-    struct TriangleUBO {
-        glm::vec4 color;
-    };
+    struct TriangleUBO { glm::vec4 color; };
     TriangleUBO data;
     data.color = glm::vec4(std::sin(time * 1.0f) * 0.5f + 0.5f, std::sin(time * 1.3f) * 0.5f + 0.5f, std::sin(time * 1.7f) * 0.5f + 0.5f, 1.0f);
-    triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
-
-    mvp.view = Application::get() -> getCamera().createViewMatrix();
-
-    sceneManager -> updateAndDrawEntities([this, triangleShader, frameIndex]() {
-        triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex);
-    }, [&commandBuffer, viewport, rect2D, this](Entity& entity) {
-        renderModel(commandBuffer, entity.getModel(), viewport, rect2D);
-    });
-
-
-    commandBuffer.endRendering();
-    mvp.view = Application::get() -> getCamera().createViewMatrix();
     glm::dmat4 dProj = mvp.projection;
     glm::dmat4 dView = mvp.view;
     inverseViewProj.inverseProj = glm::inverse(dProj);
     inverseViewProj.inverseView = glm::inverse(dView);
-
-    //Raytracing Pass
-    rtShaderPipeline -> bind(commandBuffer, frameIndex);
+    triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
 
-    barrierManager -> begin();
-    barrierManager -> transition(depthImage, BarrierUsage::depthWrite, BarrierUsage::depthRead);
-    barrierManager -> transition(rtShaderPipeline -> getUniformBuffer(RTShaderSlots::inverseViewProj, frameIndex),
-         sizeof(inverseViewProj),  ResourceStages::hostStage | ResourceAccess::write | ResourceType::ubo,
-         ResourceAccess::read | ResourceType::ubo | ResourceStages::raytracing);
-
-    barrierManager -> transition(rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).image,
-            ResourceAccess::none | ResourceType::color | ResourceStages::allCommands,
-            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing);
-
-    barrierManager -> commit(commandBuffer);
-    this -> traceRays(commandBuffer, viewport, rect2D, width, height, 1);
 
 
-    barrierManager -> begin();
-    barrierManager -> transition(baseForwardPassImage -> image, BarrierUsage::colorWrite, BarrierUsage::colorRead);
-    barrierManager -> transition(swapChainImage, BarrierUsage::colorNone, BarrierUsage::colorWrite);
-    barrierManager -> transition(rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).image,
-            ResourceAccess::write | ResourceType::storageImage | ResourceType::color | ResourceStages::raytracing,
-            BarrierUsage::colorRead);
+    // Render Graph Stuff...
+    renderGraph.initCallbacks([&](Model& model)
+        { renderModel(commandBuffer, model, viewport, rect2D); }, [&]()
+        { traceRays(commandBuffer, viewport, rect2D, width, height, 1); }, [&]()
+        { triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex); }
+    );
 
-    barrierManager -> commit(commandBuffer);
+    ImageReference depthRef(depthImage, depthImageView);
+    ImageReference swapChainRef(swapChainImage, swapChainImageView);
 
-    //Post-process pass
-    begin_render_pass(commandBuffer, 1, {swapChainImageView}, nullptr, *swapChainExtent);
-    combineShaders -> bind(commandBuffer, frameIndex);
-    renderModel(commandBuffer, screenQuad, viewport, rect2D);
-    commandBuffer.endRendering();
+    AbstractRenderPassImage baseForwardRenderPassImage = renderGraph.colorAttachment(*baseForwardPassImage);
+    AbstractRenderPassImage depthRenderPassImage = renderGraph.depthAttachment(depthRef);
+    AbstractRenderPassImage rtOutputRenderPassImage = renderGraph.storageImage(
+                    rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex));
+    AbstractRenderPassImage swapChainRenderPassImage = renderGraph.colorAttachment(swapChainRef);
 
+    RenderPass forwardPass = {
+        .renderStage = RenderStage::forward,
+        .reads = {},
+        .writes = {baseForwardRenderPassImage, depthRenderPassImage},
+        .bindPipeline = [&]() { triangleShader -> bind(commandBuffer, frameIndex );
+        },
+        .toPresent = false
+    };
+    renderGraph.addPass(forwardPass);
 
-    barrierManager -> begin();
-    barrierManager -> transition(swapChainImage, BarrierUsage::colorWrite, BarrierUsage::presentColor);
-    barrierManager -> commit(commandBuffer);
+    RenderPass rtPass = {
+        .renderStage = RenderStage::raytracing,
+        .reads = {depthRenderPassImage},
+        .writes = {rtOutputRenderPassImage},
+        .bindPipeline = [&](){ rtShaderPipeline -> bind(commandBuffer, frameIndex); },
+        .toPresent = false
+    };
+    renderGraph.addPass(rtPass);
 
+    RenderPass combinePass = {
+        .renderStage = RenderStage::postProcessing,
+        .reads = { rtOutputRenderPassImage, baseForwardRenderPassImage},
+        .writes = { swapChainRenderPassImage},
+        .bindPipeline = [&]() { combineShaders -> bind(commandBuffer, frameIndex); },
+        .toPresent = true
+    };
+    renderGraph.addPass(combinePass);
+
+    renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
     commandBuffer.end();
 }
 

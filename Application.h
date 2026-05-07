@@ -16,7 +16,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include "Camera.h"
-#include "Renderer.h"
+#include "rendering/Renderer.h"
 #include "shader-pipeline/ShaderPair.h"
 #include "shader-pipeline/ShaderPipelineRegistry.h"
 

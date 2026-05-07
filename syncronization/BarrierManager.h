@@ -26,7 +26,7 @@ enum ResourceType: uint32_t {
     accelerationStructure = 1 << 8,
 };
 
-enum ResourceStages: uint32_t {
+enum ResourceStage: uint32_t {
     topOfPipe = 1 << 12,
     bottomOfPipe = 1 << 13,
     raytracing = 1 << 14,
@@ -36,7 +36,8 @@ enum ResourceStages: uint32_t {
     fragmentShader = 1 << 18,
     transferStage = 1 << 19,
     allCommands = 1 << 20,
-    hostStage = 1<<21
+    hostStage = 1<<21,
+    compute = 1<<22
 
 };
 
@@ -70,6 +71,7 @@ namespace BarrierUsage {
     constexpr uint32_t presentDepth = depth | none | present | bottomOfPipe;
     constexpr uint32_t colorNone =  color | none | topOfPipe;
     constexpr uint32_t depthNone =  depth | none | topOfPipe;
+    constexpr uint32_t storageColorNone = none | color | allCommands;
 }
 
 

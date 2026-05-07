@@ -4,19 +4,20 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <complex.h>
 
-#include "Loader.h"
-#include "shader-pipeline/ShaderPipelineRegistry.h"
+#include "../Loader.h"
+#include "../shader-pipeline/ShaderPipelineRegistry.h"
 #include "vk_mem_alloc.h"
 #include "glm/fwd.hpp"
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_transform.hpp"
-#include "shader-pipeline/RaytracingShaderPipeline.h"
-#include "raytracing/AccelerationStructureManager.h"
-#include "VulkanCommon.h"
-#include "image-views/RenderPassImageViewManager.h"
-#include "scene/SceneManager.h"
+#include "../shader-pipeline/RaytracingShaderPipeline.h"
+#include "../raytracing/AccelerationStructureManager.h"
+#include "../VulkanCommon.h"
+#include "../image-views/RenderPassImageViewManager.h"
+#include "../scene/SceneManager.h"
+#include "RenderGraph.h"
 
-#include "syncronization/BarrierManager.h"
+#include "../syncronization/BarrierManager.h"
 #define ID(name, str) inline constexpr const char* name = str;
 
 namespace Shaders {
@@ -65,6 +66,7 @@ class Renderer {
     Loader loader;
 
     MVP mvp;
+    RenderGraph renderGraph;
     // Geometry geometry;
 
     std::array<TextureView, Config::maxFramesInFlight> depthTextureViews;

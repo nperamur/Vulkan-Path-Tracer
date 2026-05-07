@@ -25,12 +25,41 @@ struct DescriptorsInfo {
 struct Image {
     VkImage image{};
     VmaAllocation allocation{};
+
     vk::raii::ImageView imageView;
     vk::raii::Sampler sampler;
-    std::string identifier;
-    VkFormat format;
-    int frameIndex;
+
+    std::string identifier{};
+    VkFormat format{};
+    int frameIndex{};
+
+    VkImage& getImage() { return image; }
+    vk::raii::ImageView& getImageView() { return imageView; }
 };
+
+struct ImageReference {
+    vk::raii::ImageView& imageView;
+    VkImage image{};
+
+    ImageReference(VkImage img, vk::raii::ImageView& view)
+        : image(img), imageView(view) {}
+
+    VkImage& getImage() { return image; }
+    vk::raii::ImageView& getImageView() { return imageView; }
+};
+
+template<class T>
+concept ImageHandleProvider = requires(T t) {
+    { t.getImage() } -> std::same_as<VkImage&>;
+    { t.getImageView() } -> std::same_as<vk::raii::ImageView&>;
+};
+
+template<ImageHandleProvider T>
+void useImage(T& img) {
+    auto& image = img.getImage();
+    auto& view = img.getImageView();
+}
+
 
 struct TextureView {
     vk::ImageView imageView;

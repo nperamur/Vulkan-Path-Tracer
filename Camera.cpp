@@ -2,7 +2,7 @@
 #include "Camera.h"
 
 #include "Application.h"
-#include "Renderer.h"
+#include "rendering/Renderer.h"
 #include "glm/ext/matrix_transform.hpp"
 
 glm::mat4 Camera::createViewMatrix() {

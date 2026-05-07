@@ -29,8 +29,8 @@ add_executable(vulkan_test Application.cpp Application.h
     shader-pipeline/ShaderProgram.h
     shader-pipeline/ShaderPipelineRegistry.cpp
     shader-pipeline/ShaderPipelineRegistry.h
-    Renderer.cpp
-    Renderer.h
+        rendering/Renderer.cpp
+        rendering/Renderer.h
     Loader.cpp
     Loader.h
     VmaImpl.cpp
@@ -55,6 +55,8 @@ add_executable(vulkan_test Application.cpp Application.h
         image-views/RenderPassImageViewManager.h
         scene/SceneManager.cpp
         scene/SceneManager.h
+        rendering/RenderGraph.cpp
+        rendering/RenderGraph.h
 )
 target_link_libraries(vulkan_test PRIVATE glfw glm)
 
