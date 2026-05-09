@@ -105,7 +105,10 @@ void RenderGraph::execute(vk::raii::CommandBuffer &commandBuffer, BarrierManager
  */
 void RenderGraph::executeRenderPass(RenderPass &renderPass, vk::raii::CommandBuffer &commandBuffer,
     BarrierManager &barrierManager, SceneManager &sceneManager, Model &screenQuad, vk::ImageView const *swapChainDepthView, vk::raii::ImageView &swapChainImageView, vk::Extent2D swapChainExtent) {
-    resolveBarriers(renderPass, barrierManager, commandBuffer);
+
+    if (renderPass.renderStage != RenderStage::copy) {
+        resolveBarriers(renderPass, barrierManager, commandBuffer);
+    }
     if (renderPass.renderStage == RenderStage::forward || renderPass.renderStage == RenderStage::postProcessing) {
         std::vector<AbstractRenderPassImage> attachments;
         int numAttachments = 0;
@@ -139,15 +142,61 @@ void RenderGraph::executeRenderPass(RenderPass &renderPass, vk::raii::CommandBuf
         renderModel(screenQuad);
     }
 
+    if (renderPass.renderStage == RenderStage::copy) {
+        AbstractRenderPassImage& readAny = renderPass.reads.at(0);
+        AbstractRenderPassImage& writeAny = renderPass.writes.at(0);
+
+        std::visit([&barrierManager, &commandBuffer, &renderPass](auto& srcImage, auto& dstImage) {
+            barrierManager.begin();
+
+            if (srcImage.prevStage != BarrierUsage::transferRead) {
+                barrierManager.transition(srcImage.imageResource.image, srcImage.prevStage != 0 ? srcImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferRead);
+            }
+            if (dstImage.prevStage != BarrierUsage::transferWrite) {
+                barrierManager.transition(dstImage.imageResource.image, dstImage.prevStage != 0 ? dstImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferWrite);
+            }
+            barrierManager.commit(commandBuffer);
+            vk::ImageSubresourceLayers subresource{
+                vk::ImageAspectFlagBits::eColor,
+                0,
+                0,
+                1
+            };
+
+
+            vk::ImageCopy2 imageCopy{
+                subresource,
+                vk::Offset3D{0, 0, 0},
+                subresource,
+                vk::Offset3D{0, 0, 0},
+                vk::Extent3D{renderPass.width, renderPass.height, 1}
+            };
+
+            vk::CopyImageInfo2 copyImageInfo2(
+                srcImage.imageResource.image,
+                vk::ImageLayout::eTransferSrcOptimal,
+                dstImage.imageResource.image,
+                vk::ImageLayout::eTransferDstOptimal,
+                1,
+                &imageCopy
+            );
+
+            commandBuffer.copyImage2(copyImageInfo2);
+            srcImage.prevStage = BarrierUsage::transferRead;
+            dstImage.prevStage = BarrierUsage::transferWrite;
+        }, readAny, writeAny);
+
+    }
+
     if (renderPass.renderStage == RenderStage::forward || renderPass.renderStage == RenderStage::postProcessing) {
         commandBuffer.endRendering();
     }
 
     if (renderPass.toPresent) {
-        AbstractRenderPassImage any = renderPass.writes.at(0);
+        AbstractRenderPassImage& any = renderPass.writes.at(0);
         std::visit([&barrierManager, &commandBuffer](auto& image) {
             barrierManager.begin();
-            barrierManager.transition(image.imageResource.getImage(), BarrierUsage::colorWrite, BarrierUsage::presentColor);
+            barrierManager.transition(image.imageResource.getImage(), image.prevStage, BarrierUsage::presentColor);
             barrierManager.commit(commandBuffer);
         }, any);
     }
@@ -181,6 +230,7 @@ void RenderGraph::resolveBarriers(RenderPass &renderPass, BarrierManager &barrie
             renderPassImage.prevStage = secondStage;
         }, image.get());
     }
+
 
     for (auto& image : renderPass.writes) {
         std::visit([&barrierManager, &renderPass](auto& renderPassImage) {
@@ -225,7 +275,7 @@ uint32_t RenderGraph::getResourceStage(RenderStage renderStage) {
             return ResourceStage::raytracing;
         case RenderStage::compute:
             return ResourceStage::compute;
-        case RenderStage::transfer:
+        case RenderStage::copy:
             return ResourceStage::transferStage;
         default:
             return 0;

@@ -8,12 +8,21 @@ layout(set = 0, binding = 2, rgba16f) uniform image2D storageImage;
 struct RayPayload {
     vec3 hitColor;
     float distance;
+    uint materialIndex;
 };
 
 layout(set = 1, binding = 0) uniform LightUBO {
     vec4 position;
     vec4 color;
 } lightData;
+
+struct Material {
+    vec4 color;
+};
+
+layout(std430, set = 0, binding = 3) buffer Materials {
+    Material materialData[];
+} materials;
 
 layout(set = 1, binding = 1) uniform InverseViewProj {
     mat4 invViewMatrix;
@@ -24,7 +33,7 @@ layout(location = 0) rayPayloadEXT RayPayload rayPayload;
 
 
 void main() {
-    uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT;
+    uint rayFlags = gl_RayFlagsOpaqueEXT;
 
     float tMin = 0.1;
     float tMax = 1000.0f;
@@ -51,5 +60,12 @@ void main() {
         0
     );
 
-    imageStore(storageImage, pixelCoords, vec4(rayPayload.hitColor, 1.0));
+    //imageStore(storageImage, pixelCoords, vec4(rayPayload.hitColor, 1.0));
+    if (rayPayload.distance < 0) {
+        imageStore(storageImage, pixelCoords, vec4(1));
+        return;
+    }
+    imageStore(storageImage, pixelCoords, materials.materialData[rayPayload.materialIndex].color);
+
+
 }

@@ -21,14 +21,21 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 1};
     //triangleEntity.emplace(loader.load(triangleVertices, indices, triangleNormals, std::nullopt, device, physicalDevice), mvp.transformation);
 
-
+    entities.reserve(10);
     ModelLoader modelLoader;
-    entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), mvp.transformation);
+    Material teapotMaterial = { glm::vec4(0.0f, 1.0f, 0.0f, 1.0) };
+    entities.emplace_back("utah_teapot", modelLoader.load("utah_teapot", loader, device, physicalDevice), teapotMaterial, mvp.transformation);
+    entities[entities.size() - 1].setScale(glm::vec3(0.1, 0.1, 0.1));
+
+    Material sponzaMaterial = { glm::vec4(1.0f, 0.0f, 0.0f, 1.0) };
+    entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), sponzaMaterial, mvp.transformation);
     entities[entities.size() - 1].setScale(glm::vec3(0.02, 0.02, 0.02));
+
+
 
 }
 
-void SceneManager::updateAndDrawEntities(std::function<void()> updateTransformUniform, std::function<void(Entity&)> draw) {
+void SceneManager::updateAndDrawEntities(std::function<void()> updateTransform, std::function<void(Entity&)> draw) {
     float time = glfwGetTime();
     for (Entity& entity : entities) {
         if (entity.getIdentifier() == "triangle") {
@@ -37,9 +44,19 @@ void SceneManager::updateAndDrawEntities(std::function<void()> updateTransformUn
             entity.setScale(glm::vec3(0.02, 0.02, 0.02));
         }
         entity.updateTransformationMatrix();
-        updateTransformUniform();
+        updateTransform();
         draw(entity);
     }
+}
+
+std::vector<Material> SceneManager::getAllMaterials() {
+    std::vector<Material> materials;
+    for (Entity& entity : entities) {
+        if (entity.hasMaterial()) {
+            materials.push_back(entity.getMaterial());
+        }
+    }
+    return std::move(materials);
 }
 
 

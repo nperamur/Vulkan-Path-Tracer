@@ -190,6 +190,7 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
 void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP* mvp) {
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
     int i = 0;
+    int materialIndex = 0;
     for (Entity &entity : entities) {
         entity.updateTransformationMatrix();
         glm::mat4 transposed = glm::transpose(mvp -> transformation);
@@ -199,10 +200,13 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
             transformMatrix,
             i,
             0xFF,
-            0,
+            (entity.hasMaterial()) ? (materialIndex) : 0,
             {},
             blasData[i].deviceAddress
         );
+        if (entity.hasMaterial()) {
+            materialIndex++;
+        }
         instances.push_back(asInstance);
         i++;
     }

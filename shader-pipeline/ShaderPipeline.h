@@ -16,6 +16,7 @@ struct DescriptorLayoutDesc {
     uint32_t numTextureSamplers;
     uint32_t numAccelerationStructures;
     uint32_t numStorageImages;
+    uint32_t numStorageBuffers;
 };
 struct DescriptorsInfo {
     DescriptorLayoutDesc staticData;
@@ -93,9 +94,12 @@ class ShaderPipeline {
         std::vector<vk::DescriptorSetLayout> layouts;
         std::array<std::unordered_map<DescriptorBinding, VmaAllocation, DescriptorKeyHash>, 3> uboAllocations;
         std::array<std::unordered_map<DescriptorBinding, vk::Buffer, DescriptorKeyHash>, 3> uboBuffers;
+        std::array<std::unordered_map<DescriptorBinding, VmaAllocation, DescriptorKeyHash>, 3> storageBufferAllocations;
+        std::array<std::unordered_map<DescriptorBinding, vk::Buffer, DescriptorKeyHash>, 3> storageBuffers;
         DescriptorsInfo desc;
         std::string identifier;
         std::unordered_map<VkBuffer, void*> persistentUBOPointers;
+        std::unordered_map<VkBuffer, void*> persistentStoragePointers;
         std::optional<vk::raii::DescriptorPool> descriptorPool;
         std::vector<ShaderProgram> shaders;
         std::vector<Image> storageImages;
@@ -109,7 +113,7 @@ class ShaderPipeline {
         void setUniform(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex);
 
         void setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex, std::string identifier);
-
+        void setStorageBuffer(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex);
         const std::vector<Image>& getStorageImages() const;
 
         Image& getStorageImage(std::string identifier, int frameIndex);

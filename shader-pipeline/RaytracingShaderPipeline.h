@@ -6,6 +6,8 @@
 
 struct AccelerationStructureData;
 
+
+
 enum class RaytracingRegion {
     rayGen,
     miss,
@@ -25,10 +27,11 @@ class RaytracingShaderPipeline : public ShaderPipeline {
     vk::StridedDeviceAddressRegionKHR emptyRegion{};
     VkBuffer sbtBuffer;
     VmaAllocation sbtAllocation;
+    int numMaterials;
 
     public:
         RaytracingShaderPipeline(std::string string, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice,
-                              VmaAllocator &allocator, DescriptorsInfo desc);
+                              VmaAllocator &allocator, DescriptorsInfo desc, int numMaterials);
 
         void cleanUp() override;
 

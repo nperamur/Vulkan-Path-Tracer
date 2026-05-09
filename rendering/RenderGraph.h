@@ -31,7 +31,7 @@ enum class RenderStage {
     postProcessing,
     raytracing,
     compute,
-    transfer
+    copy
 };
 
 
@@ -64,6 +64,8 @@ struct RenderPass {
     std::vector<std::reference_wrapper<AbstractRenderPassImage>> writes;
     std::function<void()> bindPipeline;
     bool toPresent = false;
+    uint32_t width;
+    uint32_t height;
 };
 
 class RenderGraph {
@@ -79,6 +81,7 @@ class RenderGraph {
         AbstractRenderPassImage colorAttachment(T& image) {
             return RenderPassImage(AttachmentFormatType::color, ImageType::attachment, image);
         }
+
 
         template<ImageHandleProvider T>
         AbstractRenderPassImage depthAttachment(T& image) {

@@ -23,7 +23,12 @@ void ShaderPair::setUpPipeline() {
         ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers) ? 1 : 0) +
         ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers) ? 1 : 0);
 
-    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 0, nullptr);
+    vk::PushConstantRange pushRange(
+        vk::ShaderStageFlagBits::eVertex,
+        0,
+        192
+    );
+    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 1, &pushRange);
     rasterPipelineLayout.emplace(*device, layoutInfo);
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo(
@@ -157,6 +162,10 @@ void ShaderPair::bind(vk::raii::CommandBuffer& commandBuffer, int frameIndex) {
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *rasterPipelineLayout, 0, rawSets, offsets);
 
 
+}
+
+vk::raii::PipelineLayout & ShaderPair::getPipelineLayout() {
+    return *this -> rasterPipelineLayout;
 }
 
 

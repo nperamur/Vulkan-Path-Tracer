@@ -30,10 +30,8 @@ class ShaderPair : public ShaderPipeline {
 
         std::string getIdentifier() const;
         void bind(vk::raii::CommandBuffer &cmd, int frameIndex) override;
-
+        vk::raii::PipelineLayout& getPipelineLayout();
     private:
-
-
         void setUpPipeline() override;
 };
 

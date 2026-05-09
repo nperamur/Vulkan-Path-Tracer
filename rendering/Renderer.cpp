@@ -13,52 +13,6 @@
 #include "../shader-pipeline/RaytracingShaderPipeline.h"
 #include "../VulkanCommon.h"
 
-static inline void begin_render_pass(
-    vk::CommandBuffer cmd,
-    int numColorAttachments, std::vector<vk::ImageView> colorViews,
-    vk::ImageView const* depthView,
-    vk::Extent2D extent) {
-
-    std::vector<vk::RenderingAttachmentInfo> colorAttachments;
-    for (int i = 0; i < numColorAttachments; i++) {
-        vk::RenderingAttachmentInfo colorAttachment(
-            colorViews[i],
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ResolveModeFlagBits::eNone,
-            {}, {},
-            vk::AttachmentLoadOp::eClear,
-            vk::AttachmentStoreOp::eStore,
-            vk::ClearValue{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}}
-        );
-
-        colorAttachments.push_back(colorAttachment);
-
-    }
-
-    vk::RenderingAttachmentInfo depthAttachment;
-    if (depthView) {
-        depthAttachment = vk::RenderingAttachmentInfo(
-            *depthView,
-            vk::ImageLayout::eDepthStencilAttachmentOptimal,
-            vk::ResolveModeFlagBits::eNone,
-            {}, {},
-            vk::AttachmentLoadOp::eClear,
-            vk::AttachmentStoreOp::eDontCare,
-            vk::ClearValue(vk::ClearDepthStencilValue(1.0f, 0))
-        );
-    }
-
-    vk::RenderingInfo renderingInfo(
-        {},
-        vk::Rect2D({0, 0}, extent),
-        1, 0, numColorAttachments, colorAttachments.data(),
-        depthView ? &depthAttachment : nullptr,
-        nullptr
-    );
-
-    cmd.beginRendering(renderingInfo);
-}
-
 int numFramesSinceResize = 0;
 
 
@@ -94,22 +48,24 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
     //raytracing
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 1, .numAccelerationStructures = 1, .numStorageImages = 1},
+        .staticData = {.numTextureSamplers = 1, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 1},
         .dynamicData = {.numUBOs = 2}
     };
+    materials = sceneManager -> getAllMaterials();
     this->accelStructureManager = AccelerationStructureManager(device, physicalDevice, &*allocator);
     accelStructureManager -> build(sceneManager -> getEntities(), mvp);
     std::unique_ptr<RaytracingShaderPipeline> rtShaderPipeline = std::make_unique<RaytracingShaderPipeline>(Shaders::raytracing, device,
-                                                            physicalDevice, *allocator, raytracingDescriptorsInfo);
+                                                            physicalDevice, *allocator, raytracingDescriptorsInfo, materials.size());
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
     RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
 
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         rtShader->setAccelerationStructure(RTShaderSlots::accelerationStructure, accelStructureManager -> getTLASData(), i);
+        rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
     }
 
     DescriptorsInfo combineShadersDescriptorsInfo = {
-        .staticData = {.numUBOs = 0, .numTextureSamplers = 2},
+        .staticData = {.numUBOs = 0, .numTextureSamplers = 3},
         .dynamicData = {.numUBOs = 0, .numTextureSamplers = 0}
     };
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
@@ -120,6 +76,10 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
+    imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_B8G8R8A8_SRGB, width, height);
+    imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_B8G8R8A8_SRGB, width, height);
+
+
 
     initScreenQuad(physicalDevice);
 
@@ -139,6 +99,9 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
 
     Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
+    Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, frameIndex));
+    Image* blendOutputImage = &(this -> imageViewManager -> getImage(RenderPassImages::blendOutput, frameIndex));
+
 
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D({0, 0}, *swapChainExtent);
@@ -168,8 +131,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     // Render Graph Stuff...
     renderGraph.initCallbacks([&](Model& model)
         { renderModel(commandBuffer, model, viewport, rect2D); }, [&]()
-        { traceRays(commandBuffer, viewport, rect2D, width, height, 1); }, [&]()
-        { triangleShader -> setUniform(ForwardPassShaderSlots::mvp, &mvp, sizeof(mvp), frameIndex); }
+        { traceRays(commandBuffer, viewport, rect2D, width, height, 1); }, [this, &commandBuffer, &triangleShader]()
+        { commandBuffer.pushConstants2({ triangleShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp }); }
     );
 
     ImageReference depthRef(depthImage, depthImageView);
@@ -180,7 +143,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     AbstractRenderPassImage rtOutputRenderPassImage = renderGraph.storageImage(
                     rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex));
     AbstractRenderPassImage swapChainRenderPassImage = renderGraph.colorAttachment(swapChainRef);
-
+    AbstractRenderPassImage historyRenderPassImage = renderGraph.colorAttachment(*historyImage);
+    AbstractRenderPassImage blendOutputRenderPassImage = renderGraph.colorAttachment(*blendOutputImage);
     RenderPass forwardPass = {
         .renderStage = RenderStage::forward,
         .reads = {},
@@ -202,12 +166,38 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     RenderPass combinePass = {
         .renderStage = RenderStage::postProcessing,
-        .reads = { rtOutputRenderPassImage, baseForwardRenderPassImage},
-        .writes = { swapChainRenderPassImage},
+        .reads = { rtOutputRenderPassImage, baseForwardRenderPassImage, historyRenderPassImage},
+        .writes = { blendOutputRenderPassImage},
         .bindPipeline = [&]() { combineShaders -> bind(commandBuffer, frameIndex); },
-        .toPresent = true
+        .toPresent = false
     };
     renderGraph.addPass(combinePass);
+
+
+    RenderPass copyToHistory = {
+        .renderStage = RenderStage::copy,
+        .reads = { blendOutputRenderPassImage},
+        .writes = { historyRenderPassImage},
+        .bindPipeline = [&](){},
+        .toPresent = false,
+        .width  = static_cast<uint32_t>(width),
+        .height = static_cast<uint32_t>(height),
+
+    };
+    renderGraph.addPass(copyToHistory);
+
+
+    RenderPass copyToSwapchain = {
+        .renderStage = RenderStage::copy,
+        .reads = { blendOutputRenderPassImage},
+        .writes = { swapChainRenderPassImage},
+        .bindPipeline = [&](){},
+        .toPresent = true,
+        .width  = static_cast<uint32_t>(width),
+        .height = static_cast<uint32_t>(height),
+
+    };
+    renderGraph.addPass(copyToSwapchain);
 
     renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
     commandBuffer.end();
@@ -253,7 +243,8 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
         Application::get() -> resetAllCommandBuffers();
 
         this->imageViewManager->resizeImage(RenderPassImages::baseForwardPass, width, height);
-
+        this->imageViewManager->resizeImage(RenderPassImages::historyBuffer, width, height);
+        this->imageViewManager->resizeImage(RenderPassImages::blendOutput, width, height);
     }
     if (numFramesSinceResize < Config::maxFramesInFlight) {
         depthTextureViews[frameIndex] = TextureView{.imageView = depthImageView};
@@ -261,13 +252,17 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
         rtShaderPipeline -> setTextureSampler(RTShaderSlots::depthBuffer, depthTextureViews[frameIndex], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
         rtShaderPipeline -> setStorageImage(RTShaderSlots::rtOutput, width, height, frameIndex, StorageImages::raytracingOutput);
 
-        TextureView* textureView = this->imageViewManager->getTextureView(RenderPassImages::baseForwardPass, frameIndex);
-        combineShaders -> setTextureSampler(CombineShaderSlots::firstImage, *textureView,
+        TextureView* baseForwardPassTextureView = this->imageViewManager->getTextureView(RenderPassImages::baseForwardPass, frameIndex);
+        combineShaders -> setTextureSampler(CombineShaderSlots::firstImage, *baseForwardPassTextureView,
                                          vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
         rtTextureViews[frameIndex] = TextureView{.imageView = rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).imageView};
 
         combineShaders -> setTextureSampler(CombineShaderSlots::secondImage, (rtTextureViews[frameIndex]), vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+
+        TextureView* historyBufferTextureView = this->imageViewManager->getTextureView(RenderPassImages::historyBuffer, frameIndex);
+        combineShaders -> setTextureSampler(CombineShaderSlots::historyBuffer, *historyBufferTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+
     }
     numFramesSinceResize++;
 }

@@ -5,10 +5,15 @@
 #include "Loader.h"
 #include "glm/fwd.hpp"
 #include "glm/vec3.hpp"
+#include "glm/vec4.hpp"
 
+struct Material {
+    glm::vec4 color;
+};
 
 class Entity {
     Model model;
+    std::optional<Material> material;
     std::string identifier;
 
     glm::vec3 position = glm::vec3(0, 0, 0);
@@ -18,6 +23,7 @@ class Entity {
 
     public:
         Entity(std::string identifier, Model&& model, glm::mat4& transform);
+        Entity(std::string identifier, Model&& model, Material material, glm::mat4& transform);
         glm::vec3 getPosition() const {
             return position;
         }
@@ -42,15 +48,19 @@ class Entity {
             this->scale = scale;
         }
 
+        Material& getMaterial();
         Model& getModel();
+        void setMaterial(Material& material);
 
         std::string getIdentifier();
 
         void updateTransformationMatrix();
-            void increasePosition(glm::vec3 v);
-            void increaseRotation(glm::vec3 v);
-            void increaseScale(glm::vec3 v);
+        void increasePosition(glm::vec3 v);
+        void increaseRotation(glm::vec3 v);
+        void increaseScale(glm::vec3 v);
 
+
+        bool hasMaterial();
 
 
 };

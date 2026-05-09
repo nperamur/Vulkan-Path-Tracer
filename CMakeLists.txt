@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(vulkan_test)
+project(vulkan_offline_raytracer)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -22,7 +22,7 @@ FetchContent_MakeAvailable(glm)
 
 FetchContent_MakeAvailable(glfw)
 
-add_executable(vulkan_test Application.cpp Application.h
+add_executable(vulkan_offline_raytracer Application.cpp Application.h
     shader-pipeline/ShaderPair.cpp
     shader-pipeline/ShaderPair.h
     shader-pipeline/ShaderProgram.cpp
@@ -58,7 +58,7 @@ add_executable(vulkan_test Application.cpp Application.h
         rendering/RenderGraph.cpp
         rendering/RenderGraph.h
 )
-target_link_libraries(vulkan_test PRIVATE glfw glm)
+target_link_libraries(vulkan_offline_raytracer PRIVATE glfw glm)
 
 option(FORCE_VOLK "Force volk even if Vulkan SDK is found" OFF)
 if (NOT FORCE_VOLK)
@@ -67,8 +67,8 @@ endif()
 
 if(Vulkan_FOUND AND NOT FORCE_VOLK)
     message(STATUS "Vulkan SDK found - enabling validation layers")
-    target_link_libraries(vulkan_test PRIVATE Vulkan::Vulkan)
-    target_compile_definitions(vulkan_test PRIVATE VULKAN_SDK_FOUND)
+    target_link_libraries(vulkan_offline_raytracer PRIVATE Vulkan::Vulkan)
+    target_compile_definitions(vulkan_offline_raytracer PRIVATE VULKAN_SDK_FOUND)
 else()
     FetchContent_Declare(
     volk
@@ -77,11 +77,11 @@ else()
     )
     FetchContent_MakeAvailable(volk)
 
-    target_link_libraries(vulkan_test PRIVATE volk)
-    target_compile_definitions(vulkan_test PRIVATE VK_NO_PROTOTYPES)
+    target_link_libraries(vulkan_offline_raytracer PRIVATE volk)
+    target_compile_definitions(vulkan_offline_raytracer PRIVATE VK_NO_PROTOTYPES)
 endif()
 
-add_dependencies(vulkan_test shaders)
+add_dependencies(vulkan_offline_raytracer shaders)
 find_program(GLSLC glslc)
 
 file(GLOB GLSL_FILES
@@ -114,8 +114,8 @@ endif()
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
 #if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 #    message(STATUS "DEBUG DETECTED: Engaging Address Sanitizer...")
-#    target_compile_options(vulkan_test PRIVATE -fsanitize=address)
-#    target_link_options(vulkan_test PRIVATE -fsanitize=address)
+#    target_compile_options(vulkan_offline_raytracer PRIVATE -fsanitize=address)
+#    target_link_options(vulkan_offline_raytracer PRIVATE -fsanitize=address)
 #
 #else()
 #    message(STATUS "RELEASE DETECTED: Maximum Speed Mode (No ASan)")
@@ -130,6 +130,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(VulkanMemoryAllocator)
 
-target_link_libraries(vulkan_test PRIVATE VulkanMemoryAllocator)
+target_link_libraries(vulkan_offline_raytracer PRIVATE VulkanMemoryAllocator)
 
 file(COPY resources DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

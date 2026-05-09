@@ -60,6 +60,53 @@ void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data,
     // vmaUnmapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding]);
 }
 
+
+void ShaderPipeline::setStorageBuffer(DescriptorBinding descriptorBinding, void *data, uint32_t size, int frameIndex) {
+    if (!storageBufferAllocations[frameIndex].contains(descriptorBinding)) {
+        VkBuffer buffer;
+        VmaAllocation allocation;
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VmaAllocationInfo resultInfo;
+        vmaCreateBuffer(*allocator, &bufferInfo, &allocInfo, &buffer, &allocation, &resultInfo);
+
+        storageBuffers[frameIndex][descriptorBinding] = buffer;
+        storageBufferAllocations[frameIndex][descriptorBinding] = allocation;
+
+        vk::DescriptorBufferInfo descriptorBufferInfo(
+            buffer,
+            0,
+            size
+        );
+
+        vk::WriteDescriptorSet write(
+            *descriptorSets[frameIndex][descriptorBinding.set],
+            descriptorBinding.binding,
+            0,
+            1,
+            vk::DescriptorType::eStorageBuffer,
+            nullptr,
+            &descriptorBufferInfo,
+            nullptr,
+            nullptr
+        );
+        device->updateDescriptorSets(write, nullptr);
+        persistentStoragePointers[storageBuffers[frameIndex][descriptorBinding]] = resultInfo.pMappedData;
+        for (int i = 0; i < storageBuffers.size(); i++) {
+            if (i != frameIndex) {
+                setStorageBuffer(descriptorBinding, data, size, i);
+            }
+        }
+    }
+    memcpy(persistentStoragePointers[storageBuffers[frameIndex][descriptorBinding]], data, size);
+    vmaFlushAllocation(*allocator, storageBufferAllocations[frameIndex][descriptorBinding], 0, size);
+}
+
 void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int width, int height, int frameIndex, std::string identifier) {
     for (int i = 0; i < storageImages.size(); i++) {
         if (storageImages[i].identifier == identifier && storageImages[i].frameIndex == frameIndex) {
@@ -214,10 +261,16 @@ void ShaderPipeline::cleanUp() {
             vmaDestroyBuffer(*allocator, uboBuffers[i].at(key), uboAllocations[i].at(key));
         }
     }
+    for (int i = 0; i < storageBuffers.size(); i++) {
+        for (const auto& [key, value] : storageBuffers[i]) {
+            vmaDestroyBuffer(*allocator, storageBuffers[i].at(key), storageBufferAllocations[i].at(key));
+        }
+    }
     for (int i = 0; i < storageImages.size(); i++) {
         vmaDestroyImage(*allocator, storageImages[i].image, storageImages[i].allocation);
     }
     persistentUBOPointers.clear();
+    persistentStoragePointers.clear();
 }
 
 const std::string ShaderPipeline::getIdentifier() const {
@@ -255,12 +308,15 @@ void ShaderPipeline::setUpDescriptors() {
         poolSizes.push_back({ vk::DescriptorType::eAccelerationStructureKHR, 100 });
     if (desc.dynamicData.numStorageImages + desc.staticData.numStorageImages > 0)
         poolSizes.push_back({ vk::DescriptorType::eStorageImage, 100 });
+    if (desc.dynamicData.numStorageBuffers + desc.staticData.numStorageBuffers > 0)
+        poolSizes.push_back({ vk::DescriptorType::eStorageBuffer, 100 });
 
 
     vk::DescriptorPoolCreateInfo poolInfo(
         vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
         (desc.dynamicData.numTextureSamplers + desc.dynamicData.numUBOs + desc.staticData.numTextureSamplers + desc.staticData.numUBOs
-                + desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures + desc.dynamicData.numStorageImages + desc.staticData.numStorageImages) * descriptorSets.size(),
+                + desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures + desc.dynamicData.numStorageImages + desc.staticData.numStorageImages
+                + desc.staticData.numStorageBuffers + desc.dynamicData.numStorageBuffers) * descriptorSets.size(),
         poolSizes.size(),
         poolSizes.data()
     );
@@ -334,6 +390,17 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
         vk::DescriptorSetLayoutBinding binding(
             desc.numUBOs + desc.numTextureSamplers + desc.numAccelerationStructures + i,
             vk::DescriptorType::eStorageImage,
+            1,
+            {getShaderStageFlags()},
+            {}
+        );
+        bindings.push_back(binding);
+    }
+
+    for (int i = 0; i < desc.numStorageBuffers; i++) {
+        vk::DescriptorSetLayoutBinding binding(
+            desc.numUBOs + desc.numTextureSamplers + desc.numAccelerationStructures + desc.numStorageImages + i,
+            vk::DescriptorType::eStorageBuffer,
             1,
             {getShaderStageFlags()},
             {}

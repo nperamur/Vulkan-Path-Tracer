@@ -10,7 +10,7 @@
 struct AccelerationStructureData;
 
 RaytracingShaderPipeline::RaytracingShaderPipeline(std::string string, vk::raii::Device &device,vk::raii::PhysicalDevice &physicalDevice,
-                                                   VmaAllocator&allocator, DescriptorsInfo desc
+                                                   VmaAllocator&allocator, DescriptorsInfo desc, int numMaterials
 ) : ShaderPipeline(string, device, allocator, desc) {
     setUpDescriptors();
     this -> physicalDevice = physicalDevice;
@@ -20,7 +20,10 @@ RaytracingShaderPipeline::RaytracingShaderPipeline(std::string string, vk::raii:
     shaders.push_back(std::move(rayGen));
     shaders.push_back(std::move(miss));
     shaders.push_back(std::move(closestHit));
+    this -> numMaterials = numMaterials;
     RaytracingShaderPipeline::setUpPipeline();
+
+
 }
 
 
@@ -107,6 +110,8 @@ void RaytracingShaderPipeline::setUpPipeline() {
     rtPipeline.emplace(std::move(result.at(0)));
     std::vector<uint8_t> handles = rtPipeline->getRayTracingShaderGroupHandlesKHR<uint8_t>(0, 3, (size_t)(handleSize * 3));
 
+    uint32_t stride = (handleSize + sizeof(uint32_t) + rayTracingPipelineProperties.shaderGroupBaseAlignment - 1) & ~(rayTracingPipelineProperties.shaderGroupBaseAlignment - 1);
+
 
 
     VkBufferCreateInfo sbtBufferInfo{};
@@ -117,7 +122,7 @@ void RaytracingShaderPipeline::setUpPipeline() {
     asAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
     asAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
     uint32_t handleSizeAligned = (handleSize + rayTracingPipelineProperties.shaderGroupHandleAlignment - 1) & ~(rayTracingPipelineProperties.shaderGroupHandleAlignment - 1);
-    sbtBufferInfo.size = handleSizeAligned * 3;
+    sbtBufferInfo.size = stride * (numMaterials != 0 ? 2 + numMaterials : 3);
 
     vmaCreateBuffer(*allocator, &sbtBufferInfo, &asAllocInfo, &sbtBuffer, &sbtAllocation, nullptr);
 
@@ -126,8 +131,18 @@ void RaytracingShaderPipeline::setUpPipeline() {
     uint8_t* mapped = (uint8_t*)sbtAllocInfo.pMappedData;
 
     memcpy(mapped, handles.data(), handleSize);
-    memcpy(mapped + handleSizeAligned, handles.data() + handleSizeAligned, handleSize);
-    memcpy(mapped + handleSizeAligned * 2, handles.data() + handleSizeAligned * 2, handleSize);
+    memcpy(mapped + stride, handles.data() + handleSize, handleSize);
+    if (numMaterials == 0) {
+        memcpy(mapped + stride * 2, handles.data() + handleSize * 2, handleSize);
+
+    }
+
+    for (int i = 2; i < 2 + numMaterials; i++) {
+        uint8_t* dst = mapped + (stride * i);
+        memcpy(dst, handles.data() + handleSize * 2, handleSize);
+        uint32_t matID = i - 2;
+        memcpy(dst + handleSize, &matID, sizeof(uint32_t));
+    }
 
     vk::BufferDeviceAddressInfo deviceAddressInfo(
         sbtBuffer
@@ -137,23 +152,22 @@ void RaytracingShaderPipeline::setUpPipeline() {
 
     raygenRegion.emplace(
         address,
-        handleSizeAligned,
-        handleSizeAligned
+        stride,
+        stride
     );
 
     missRegion.emplace(
-        address + handleSizeAligned,
-        handleSizeAligned,
-        handleSizeAligned
+        address + stride,
+        stride,
+        stride
     );
 
     closestHitRegion.emplace(
-        address + handleSizeAligned * 2,
-        handleSizeAligned,
-        handleSizeAligned
+        address + (stride * 2),
+        stride,
+        stride * numMaterials
     );
-
-
+    vmaFlushAllocation(*allocator, sbtAllocation, 0, VK_WHOLE_SIZE);
 
 }
 

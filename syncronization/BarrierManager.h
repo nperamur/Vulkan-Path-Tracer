@@ -66,6 +66,7 @@ namespace BarrierUsage {
     constexpr uint32_t colorWrite = color | write | colorAttachmentOutput;
     constexpr uint32_t depthRead = depth | read | sampler | fragmentShader;
     constexpr uint32_t depthWrite = depth | write | earlyFragmentTests;
+    constexpr uint32_t transferRead = transfer | read | transferStage;
     constexpr uint32_t transferWrite = transfer | write | transferStage;
     constexpr uint32_t presentColor = color | none | present | bottomOfPipe;
     constexpr uint32_t presentDepth = depth | none | present | bottomOfPipe;
@@ -89,15 +90,14 @@ class BarrierManager {
     void transition(vk::Image image, uint32_t firstState, uint32_t secondState);
     void transition(vk::Buffer buffer, float bufferSize, uint32_t firstState, uint32_t secondState);
     void commit(vk::raii::CommandBuffer &commandBuffer);
-
+    vk::ImageLayout resolveImageLayout(uint32_t state);
     private:
-    vk::PipelineStageFlagBits2 resolveStage(uint32_t state);
     vk::Flags<vk::AccessFlagBits2> resolveAccess(uint32_t state);
 
     vk::Flags<vk::AccessFlagBits2> resolveRead(uint32_t state);
     vk::Flags<vk::AccessFlagBits2> resolveWrite(uint32_t state);
 
-    vk::ImageLayout resolveImageLayout(uint32_t state);
+    vk::PipelineStageFlagBits2 resolveStage(uint32_t state);
     vk::ImageAspectFlagBits resolveImageAspectFlagBits(uint32_t state, uint32_t state2);
 
 

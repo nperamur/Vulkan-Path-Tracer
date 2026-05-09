@@ -32,6 +32,9 @@ namespace StorageImages {
 
 namespace RenderPassImages {
     ID(baseForwardPass, "baseForwardPass")
+    ID(historyBuffer, "historyBuffer")
+    ID(blendOutput, "blendOutput")
+    ID(visibilityBuffer, "visiblityBuffer")
 }
 
 
@@ -60,6 +63,8 @@ class Renderer {
     const vk::Extent2D* swapChainExtent;
 
     std::optional<SceneManager> sceneManager;
+
+    std::vector<Material> materials;
 
     std::optional<vk::RenderingInfo> renderingInfo;
     Light light;

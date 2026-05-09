@@ -32,6 +32,8 @@ namespace RTShaderSlots {
     inline constexpr DescriptorBinding inverseViewProj = {.set=1, .binding=1};
     inline constexpr DescriptorBinding depthBuffer = {.set = 0, .binding = 1};
     inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 2};
+    inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 3};
+    inline constexpr DescriptorBinding visibilityBuffer = {.set = 0, .binding = 4};
 }
 
 namespace ForwardPassShaderSlots {
@@ -43,6 +45,8 @@ namespace ForwardPassShaderSlots {
 namespace CombineShaderSlots {
     inline constexpr DescriptorBinding firstImage = {.set = 0,.binding = 0};
     inline constexpr DescriptorBinding secondImage = {.set = 0,.binding = 1};
+    inline constexpr DescriptorBinding historyBuffer = {.set = 0,.binding = 2};
+
 }
 
 

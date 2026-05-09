@@ -18,11 +18,13 @@ class SceneManager {
     public:
         SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp);
 
-        void updateAndDrawEntities(std::function<void()> updateTransformUniform,  std::function<void(Entity&)> draw);
+        void updateAndDrawEntities(std::function<void()> updateTransform,  std::function<void(Entity&)> draw);
 
         std::vector<Entity>& getEntities() {
             return entities;
         }
+
+    std::vector<Material> getAllMaterials();
 };
 
 

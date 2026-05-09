@@ -375,7 +375,7 @@ void Application::setupSwapChain() {
         colorSpace.value(),
         capabilities.currentExtent,
         1,
-        vk::ImageUsageFlagBits::eColorAttachment,
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
         vk::SharingMode::eExclusive,
         0,
         nullptr,
