@@ -19,6 +19,7 @@ struct MVP {
     glm::mat4 projection;
 };
 
+
 namespace Config {
     inline constexpr int maxFramesInFlight = 3;
 }
@@ -31,12 +32,13 @@ namespace RTShaderSlots {
     inline constexpr DescriptorBinding lightUBO = {.set=1, .binding=0};
     inline constexpr DescriptorBinding inverseViewProj = {.set=1, .binding=1};
     inline constexpr DescriptorBinding depthBuffer = {.set = 0, .binding = 1};
-    inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 2};
-    inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 3};
-    inline constexpr DescriptorBinding visibilityBuffer = {.set = 0, .binding = 4};
+    inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 3};
+    inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 4};
+    inline constexpr DescriptorBinding visibilityBuffer = {.set = 0, .binding = 2};
 }
 
 namespace ForwardPassShaderSlots {
+    inline constexpr DescriptorBinding lightUBO = {.set = 0,.binding = 0};
     inline constexpr DescriptorBinding triangleUBO = {.set = 1,.binding = 0};
     inline constexpr DescriptorBinding mvp = {.set = 1,.binding = 1};
 }

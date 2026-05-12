@@ -34,7 +34,7 @@ namespace RenderPassImages {
     ID(baseForwardPass, "baseForwardPass")
     ID(historyBuffer, "historyBuffer")
     ID(blendOutput, "blendOutput")
-    ID(visibilityBuffer, "visiblityBuffer")
+    ID(visibilityBuffer, "visibilityBuffer")
 }
 
 
@@ -98,7 +98,7 @@ class Renderer {
 
 
 private:
-    void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, vk::Viewport viewport, vk::Rect2D rect2D);
+    void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, int instanceIndex, vk::Viewport viewport, vk::Rect2D rect2D);
     void resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
     glm::mat4 createProjectionMatrix();
     void traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth);

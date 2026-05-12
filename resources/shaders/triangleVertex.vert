@@ -10,9 +10,11 @@ layout(push_constant) uniform transformUBO {
 } transform;
 
 layout(location = 0) out vec3 passNormal;
+layout(location = 1) out int instanceIndex;
 
 void main() {
     gl_Position = transform.projectionMatrix * transform.viewMatrix * transform.transformationMatrix * vec4(inPosition, 1.0);
 
     passNormal = inNormal.rgb;
+    instanceIndex = gl_InstanceIndex;
 }

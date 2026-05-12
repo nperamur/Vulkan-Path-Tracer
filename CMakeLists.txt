@@ -122,6 +122,10 @@ endif()
 #endif()
 
 #vma
+if(MSVC)
+    add_compile_options(/MP)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(
     VulkanMemoryAllocator

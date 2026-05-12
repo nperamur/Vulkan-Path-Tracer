@@ -14,5 +14,5 @@ void main() {
     vec4 lightFactor = vec4(0.50) + 0.5 * second;
     outColor = history + (first * lightFactor - history) * 0.1;
     //outColor = first * lightFactor;
-    //outColor = second;
+    outColor = second;
 }
