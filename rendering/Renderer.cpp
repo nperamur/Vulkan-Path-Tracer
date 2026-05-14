@@ -42,13 +42,13 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     sceneManager.emplace(loader, device, physicalDevice, mvp);
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR16G16Unorm}, *allocator, triangleDescriptorsInfo, 2));
+                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR16G16Sfloat, vk::Format::eR16G16B16A16Sfloat}, *allocator, triangleDescriptorsInfo, 3));
 
     this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  0);
 
     //raytracing
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 2, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 1},
+        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 2},
         .dynamicData = {.numUBOs = 2}
     };
     materials = sceneManager -> getAllMaterials();
@@ -78,7 +78,8 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R16G16_UNORM, width, height);
+    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R16G16_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R16G16B16A16_SFLOAT, width, height);
 
 
     initScreenQuad(physicalDevice);
@@ -102,6 +103,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, frameIndex));
     Image* blendOutputImage = &(this -> imageViewManager -> getImage(RenderPassImages::blendOutput, frameIndex));
     Image* visibilityBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::visibilityBuffer, frameIndex);
+    Image* normalBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::normalBuffer, frameIndex);
+
 
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D({0, 0}, *swapChainExtent);
@@ -126,7 +129,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
 
-
     // Render Graph Stuff...
     uint32_t index = 0;
     renderGraph.initCallbacks([&](Model& model)
@@ -147,11 +149,12 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     AbstractRenderPassImage historyRenderPassImage = renderGraph.colorAttachment(*historyImage);
     AbstractRenderPassImage blendOutputRenderPassImage = renderGraph.colorAttachment(*blendOutputImage);
     AbstractRenderPassImage visibilityRenderPassImage = renderGraph.colorAttachment(*visibilityBuffer);
+    AbstractRenderPassImage normalRenderPassImage = renderGraph.colorAttachment(*normalBuffer);
 
     RenderPass forwardPass = {
         .renderStage = RenderStage::forward,
         .reads = {},
-        .writes = {baseForwardRenderPassImage, depthRenderPassImage, visibilityRenderPassImage},
+        .writes = {baseForwardRenderPassImage, depthRenderPassImage, visibilityRenderPassImage, normalRenderPassImage},
         .bindPipeline = [&]() { triangleShader -> bind(commandBuffer, frameIndex );},
         .toPresent = false
     };
@@ -159,7 +162,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     RenderPass rtPass = {
         .renderStage = RenderStage::raytracing,
-        .reads = {depthRenderPassImage, visibilityRenderPassImage},
+        .reads = {depthRenderPassImage, visibilityRenderPassImage, normalRenderPassImage},
         .writes = {rtOutputRenderPassImage},
         .bindPipeline = [&](){ rtShaderPipeline -> bind(commandBuffer, frameIndex); },
         .toPresent = false
@@ -203,6 +206,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
     commandBuffer.end();
+
+    light.frameCount++;
 }
 
 
@@ -248,14 +253,19 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
         this->imageViewManager->resizeImage(RenderPassImages::historyBuffer, width, height);
         this->imageViewManager->resizeImage(RenderPassImages::blendOutput, width, height);
         this->imageViewManager->resizeImage(RenderPassImages::visibilityBuffer, width, height);
+        this->imageViewManager->resizeImage(RenderPassImages::normalBuffer, width, height);
     }
     if (numFramesSinceResize < Config::maxFramesInFlight) {
         depthTextureViews[frameIndex] = TextureView{.imageView = depthImageView};
 
         rtShaderPipeline -> setTextureSampler(RTShaderSlots::depthBuffer, depthTextureViews[frameIndex], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal,frameIndex);
         TextureView* visibilityBufferTextureView = this->imageViewManager->getTextureView(RenderPassImages::visibilityBuffer, frameIndex);
+        TextureView* normalTextureView = this->imageViewManager->getTextureView(RenderPassImages::normalBuffer, frameIndex);
+
 
         rtShaderPipeline -> setTextureSampler(RTShaderSlots::visibilityBuffer, *visibilityBufferTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+        rtShaderPipeline -> setTextureSampler(RTShaderSlots::normalBuffer, *normalTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+
         rtShaderPipeline -> setStorageImage(RTShaderSlots::rtOutput, width, height, frameIndex, StorageImages::raytracingOutput);
         TextureView* baseForwardPassTextureView = this->imageViewManager->getTextureView(RenderPassImages::baseForwardPass, frameIndex);
         combineShaders -> setTextureSampler(CombineShaderSlots::firstImage, *baseForwardPassTextureView,

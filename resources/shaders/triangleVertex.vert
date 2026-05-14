@@ -15,6 +15,6 @@ layout(location = 1) out int instanceIndex;
 void main() {
     gl_Position = transform.projectionMatrix * transform.viewMatrix * transform.transformationMatrix * vec4(inPosition, 1.0);
 
-    passNormal = inNormal.rgb;
+    passNormal = normalize(mat3(transform.transformationMatrix) * inNormal);
     instanceIndex = gl_InstanceIndex;
 }

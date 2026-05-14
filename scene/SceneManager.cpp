@@ -23,11 +23,11 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
 
     entities.reserve(10);
     ModelLoader modelLoader;
-    Material teapotMaterial = { glm::vec4(0.0f, 1.0f, 0.0f, 1.0) };
+    Material teapotMaterial = { .color = glm::vec4(0.0f, 1.0f, 0.0f, 1.0), .diffuseAlbedo = 0.8};
     entities.emplace_back("utah_teapot", modelLoader.load("utah_teapot", loader, device, physicalDevice), teapotMaterial, mvp.transformation);
     entities[entities.size() - 1].setScale(glm::vec3(0.1, 0.1, 0.1));
 
-    Material sponzaMaterial = { glm::vec4(1.0f, 0.0f, 0.0f, 1.0) };
+    Material sponzaMaterial = { .color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0), .diffuseAlbedo = 0.4};
     entities.emplace_back("sponza", modelLoader.load("sponza", loader, device, physicalDevice), sponzaMaterial, mvp.transformation);
     entities[entities.size() - 1].setScale(glm::vec3(0.02, 0.02, 0.02));
 

@@ -35,6 +35,7 @@ namespace RenderPassImages {
     ID(historyBuffer, "historyBuffer")
     ID(blendOutput, "blendOutput")
     ID(visibilityBuffer, "visibilityBuffer")
+    ID(normalBuffer, "normals")
 }
 
 
@@ -45,9 +46,10 @@ struct InverseViewProj {
 
 
 
-struct Light {
+struct alignas(16) Light {
     glm::vec4 position;
     glm::vec4 color;
+    int frameCount;
 };
 
 class Renderer {

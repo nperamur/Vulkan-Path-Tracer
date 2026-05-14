@@ -7,8 +7,9 @@
 #include "glm/vec3.hpp"
 #include "glm/vec4.hpp"
 
-struct Material {
+struct alignas(16) Material {
     glm::vec4 color;
+    float diffuseAlbedo;
 };
 
 class Entity {

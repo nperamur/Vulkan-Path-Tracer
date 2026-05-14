@@ -2,6 +2,7 @@
 
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec2 outVisibilityBuffer;
+layout(location = 2) out vec4 outNormal;
 
 layout(location = 0) in vec3 passNormal;
 
@@ -22,4 +23,5 @@ void main() {
 
     outColor = min(colors.color * diffuse * lightData.color + ambient * colors.color * lightData.color, 1.0);
     outVisibilityBuffer = vec2(instanceIndex, gl_PrimitiveID);
+    outNormal = vec4(passNormal, 1);
 }
