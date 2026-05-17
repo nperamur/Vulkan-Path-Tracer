@@ -46,6 +46,7 @@ namespace ForwardPassShaderSlots {
 
 
 namespace CombineShaderSlots {
+    inline constexpr DescriptorBinding lightUBO = {.set = 1,.binding = 0};
     inline constexpr DescriptorBinding firstImage = {.set = 0,.binding = 0};
     inline constexpr DescriptorBinding secondImage = {.set = 0,.binding = 1};
     inline constexpr DescriptorBinding historyBuffer = {.set = 0,.binding = 2};

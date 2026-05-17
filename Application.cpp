@@ -233,13 +233,23 @@ void Application::createVulkanInstance() {
     // std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
     // extensions.push_back("VK_EXT_debug_utils");
 
+    std::vector<vk::ValidationFeatureEnableEXT> enabledFeatures = {
+        vk::ValidationFeatureEnableEXT::eSynchronizationValidation
+    };
+
+    vk::ValidationFeaturesEXT validationFeatures(
+        enabledFeatures,
+        nullptr
+    );
+
     vk::InstanceCreateInfo createInfo(
         {},
         &appInfo,
         enabledLayerCount,
         enabledLayers,
         glfwExtensionCount,
-        glfwExtensions
+        glfwExtensions,
+        &validationFeatures
     );
 
     instance.emplace(context, createInfo);
@@ -284,14 +294,16 @@ void Application::setupDevices() {
     );
 
     //Logical device selection:
-    const char* enabledExtensions[9] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline",
+    const char* enabledExtensions[10] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline",
         "VK_KHR_deferred_host_operations", "VK_KHR_ray_query", "VK_KHR_pipeline_library", "VK_KHR_buffer_device_address", "VK_EXT_descriptor_indexing",
-    "VK_EXT_robustness2"};
+    "VK_EXT_robustness2", "VK_KHR_ray_tracing_position_fetch"};
     vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures(VK_TRUE);
     vk::PhysicalDeviceSynchronization2Features sync2Features(VK_TRUE);
     vk::PhysicalDeviceBufferDeviceAddressFeatures deviceAddressFeatures(VK_TRUE);
     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtFeatures{};
     vk::PhysicalDeviceRobustness2FeaturesKHR robustnessFeatures{};
+    vk::PhysicalDeviceRayTracingPositionFetchFeaturesKHR positionFetchFeatures{};
+    positionFetchFeatures.rayTracingPositionFetch = VK_TRUE;
     robustnessFeatures.nullDescriptor = VK_TRUE;
     rtFeatures.rayTracingPipeline = VK_TRUE;
     rtFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE; // optional
@@ -307,7 +319,7 @@ void Application::setupDevices() {
         &deviceQueueCreateInfo,
         0,
         nullptr,
-        8,
+        10,
         enabledExtensions
 
     );
@@ -319,6 +331,7 @@ void Application::setupDevices() {
     rtFeatures.setPNext(physicalDeviceAccelerationFeatures);
     physicalDeviceAccelerationFeatures.setPNext(robustnessFeatures);
     robustnessFeatures.setPNext(physicalDeviceFeatures);
+    physicalDeviceFeatures.setPNext(positionFetchFeatures);
 
 
 

@@ -197,7 +197,6 @@ void RaytracingShaderPipeline::setAccelerationStructure(DescriptorBinding descri
          &writeDescriptorSetAcceleration
 
     );
-
     device->updateDescriptorSets(write, nullptr);
 }
 

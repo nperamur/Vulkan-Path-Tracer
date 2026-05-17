@@ -54,4 +54,14 @@ void Camera::handleInputs() {
         position += deltaTime * right * horizontalMotionMask * movementSpeed;
         cameraTarget += deltaTime * right * horizontalMotionMask * movementSpeed;
     }
+
+    // if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    //     position += deltaTime * glm::vec3(0, 1, 0) * movementSpeed;
+    //     cameraTarget += deltaTime * glm::vec3(0, 1, 0) * movementSpeed;
+    // }
+    //
+    // if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+    //     position += deltaTime * glm::vec3(0, -1, 0) * movementSpeed;
+    //     cameraTarget += deltaTime * glm::vec3(0, -1, 0) * movementSpeed;
+    // }
 }

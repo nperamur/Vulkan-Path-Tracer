@@ -66,7 +66,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
     DescriptorsInfo combineShadersDescriptorsInfo = {
         .staticData = {.numUBOs = 0, .numTextureSamplers = 3},
-        .dynamicData = {.numUBOs = 0, .numTextureSamplers = 0}
+        .dynamicData = {.numUBOs = 1, .numTextureSamplers = 0}
     };
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
                                     std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, combineShadersDescriptorsInfo, 1));
@@ -90,6 +90,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
 void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageView &swapChainImageView, vk::raii::ImageView &depthImageView, vk::Image &swapChainImage, VkImage depthImage, int frameIndex) {
     //TODO: add secondary command buffer support later
+    light.playerPos = glm::vec4(Application::get() -> getCamera().getPos(), 1);
     RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
     ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::triangle).get());
     ShaderPair* combineShaders = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::combineShader).get());
@@ -115,6 +116,15 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     vk::CommandBufferBeginInfo beginInfo({}, nullptr);
     commandBuffer.begin(beginInfo);
 
+    vk::ImageSubresourceRange range(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+    // commandBuffer.clearColorImage(rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex).image, vk::ImageLayout::eTransferDstOptimal, {0.0f, 0.0f, 0.0f, 1.0f},
+    //                 range);
+
+
+    if (mvp.view != Application::get() -> getCamera().createViewMatrix()) {
+        light.frameCount = 0;
+    }
+
     mvp.view = Application::get() -> getCamera().createViewMatrix();
     float time = glfwGetTime();
 
@@ -125,10 +135,21 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     glm::dmat4 dView = mvp.view;
     inverseViewProj.inverseProj = glm::inverse(dProj);
     inverseViewProj.inverseView = glm::inverse(dView);
+
+
     triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
-
+    combineShaders -> setUniform(CombineShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
+    //
+    barrierManager -> begin();
+    barrierManager -> transition(combineShaders -> getUniformBuffer({.set = 1, .binding = 0}, frameIndex),
+     sizeof(light),  ResourceStage::hostStage | ResourceAccess::write | ResourceType::ubo,
+     ResourceAccess::read | ResourceType::ubo | ResourceStage::fragmentShader);
+    barrierManager -> transition(rtShaderPipeline -> getUniformBuffer({.set = 1, .binding = 0}, frameIndex),
+     sizeof(light),  ResourceStage::hostStage | ResourceAccess::write | ResourceType::ubo,
+     ResourceAccess::read | ResourceType::ubo | ResourceStage::raytracing);
+    barrierManager -> commit(commandBuffer);
     // Render Graph Stuff...
     uint32_t index = 0;
     renderGraph.initCallbacks([&](Model& model)
@@ -204,10 +225,11 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     };
     renderGraph.addPass(copyToSwapchain);
 
+
     renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
+    light.frameCount++;
     commandBuffer.end();
 
-    light.frameCount++;
 }
 
 

@@ -23,9 +23,21 @@ AccelerationStructureManager::AccelerationStructureManager(vk::raii::Device &dev
  */
 void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
     buildBLASGeometry(entities);
-    buildBLAS();
+    vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
+    vk::raii::CommandPool commandPool(*device, poolInfo);
+    vk::CommandBufferAllocateInfo cmdAllocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+    vk::raii::CommandBuffers commandBuffers = device -> allocateCommandBuffers(cmdAllocInfo);
+    vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    vk::SubmitInfo submitInfo({}, {}, *commandBuffers[0]);
+    vk::Queue queue = device -> getQueue(0, 0);
+    queue.waitIdle();
+    commandBuffers[0].begin(beginInfo);
+    buildBLAS(commandBuffers[0]);
     buildTLASGeometry(blasData, entities, &mvp);
-    buildTLAS();
+    buildTLAS(commandBuffers[0]);
+    commandBuffers[0].end();
+    queue.submit(submitInfo);
+    queue.waitIdle();
 
 }
 
@@ -34,7 +46,7 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
 /**
  * Builds the bottom-level acceleration structure
  */
-void AccelerationStructureManager::buildBLAS() {
+void AccelerationStructureManager::buildBLAS(vk::raii::CommandBuffer& commandBuffer) {
     for (int i = 0; i < geometry.blasGeometry.size(); i++) {
         AccelerationStructureData accelStructureData = {.handle = nullptr, .buffer = nullptr, .allocation = nullptr, .deviceAddress = 0};
         buildAccelerationStructure(
@@ -42,6 +54,7 @@ void AccelerationStructureManager::buildBLAS() {
             &accelStructureData.handle,
             geometry.blasGeometry[i].primitiveCount,
             geometry.blasGeometry[i].geometry,
+            commandBuffer,
             &accelStructureData.buffer,
             &accelStructureData.allocation,
             &accelStructureData.deviceAddress
@@ -54,12 +67,13 @@ void AccelerationStructureManager::buildBLAS() {
 /**
  * Builds the top-level acceleration structure
  */
-void AccelerationStructureManager::buildTLAS() {
+void AccelerationStructureManager::buildTLAS(vk::raii::CommandBuffer& commandBuffer) {
     buildAccelerationStructure(
         vk::AccelerationStructureTypeKHR::eTopLevel,
         &tlasData -> handle,
         geometry.tlasGeometry.primitiveCount,
         geometry.tlasGeometry.geometry,
+        commandBuffer,
         &tlasData -> buffer,
         &tlasData -> allocation,
         &tlasData -> deviceAddress
@@ -73,10 +87,10 @@ void AccelerationStructureManager::buildTLAS() {
  * updating passed-in acceleration structure allocation pointers when done
  */
 void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
-    vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
-        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(
+    vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry, vk::raii::CommandBuffer& commandBuffer,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
+    vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(
         accelerationStructureType,
-        vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace,
+        vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace | vk::BuildAccelerationStructureFlagBitsKHR::eAllowDataAccess,
         vk::BuildAccelerationStructureModeKHR::eBuild,
         nullptr,
         nullptr,
@@ -153,26 +167,37 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
     vk::DeviceAddress asDeviceAddress = device -> getAccelerationStructureAddressKHR(asDeviceAddressInfo);
 
 
-    vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
-    vk::raii::CommandPool commandPool(*device, poolInfo);
-    vk::CommandBufferAllocateInfo cmdAllocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
-    vk::raii::CommandBuffers commandBuffers = device -> allocateCommandBuffers(cmdAllocInfo);
-    vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    vk::SubmitInfo submitInfo({}, {}, *commandBuffers[0]);
-    vk::Queue queue = device -> getQueue(0, 0);
-
-
     vk::AccelerationStructureBuildRangeInfoKHR rangeInfo(
         primitiveCount,
         0,
         0,
         0
     );
-    commandBuffers[0].begin(beginInfo);
-    commandBuffers[0].buildAccelerationStructuresKHR(buildInfo, &rangeInfo);
-    commandBuffers[0].end();
-    queue.submit(submitInfo);
-    queue.waitIdle();
+
+    commandBuffer.buildAccelerationStructuresKHR(buildInfo, &rangeInfo);
+    vk::MemoryBarrier2 asBarrier(
+            vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+            vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+            vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+            vk::AccessFlagBits2::eAccelerationStructureReadKHR
+        );
+    vk::BufferMemoryBarrier2 scratchBarrier(
+        vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+        vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+        vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+        vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+        0, 0,
+        scratchBuffer, 0, VK_WHOLE_SIZE
+    );
+
+    vk::DependencyInfo dependencyInfo(
+            vk::DependencyFlags(),
+            asBarrier,
+            scratchBarrier,
+            nullptr
+        );
+
+    commandBuffer.pipelineBarrier2(dependencyInfo);
 
     *accelStructureHandle = std::move(as);
     vmaDestroyBuffer(*allocator, scratchBuffer, scratchAllocation);

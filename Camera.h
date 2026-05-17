@@ -19,6 +19,9 @@ class Camera {
     glm::mat4 createViewMatrix();
 
     void handleInputs();
+    glm::vec3 getPos() {
+        return position;
+    }
 };
 
 

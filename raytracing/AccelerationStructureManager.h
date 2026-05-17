@@ -52,7 +52,7 @@ class AccelerationStructureManager {
 
     void buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
                                     vk::raii::AccelerationStructureKHR *accelStructureHandle, uint32_t primitiveCount,
-                                    vk::AccelerationStructureGeometryKHR &geometry, VkBuffer *buffer,
+                                    vk::AccelerationStructureGeometryKHR &geometry, vk::raii::CommandBuffer& commandBuffer, VkBuffer *buffer,
                                     VmaAllocation *allocation, vk::DeviceAddress *deviceAddress);
 
 
@@ -60,9 +60,9 @@ class AccelerationStructureManager {
         return blasData;
     }
 
-    void buildBLAS();
+    void buildBLAS(vk::raii::CommandBuffer& commandBuffer);
 
-    void buildTLAS();
+    void buildTLAS(vk::raii::CommandBuffer& commandBuffer);
 
     void buildTLASGeometry(std::vector<AccelerationStructureData> &blasData, std::vector<Entity> &entities, MVP *mvp);
     void buildBLASGeometry(std::vector<Entity>& entities);

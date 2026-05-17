@@ -20,9 +20,9 @@ void Entity::updateTransformationMatrix() {
     glm::mat4 transformation = glm::mat4(1.0f);
     transformation = glm::translate(transformation, position);
     transformation = glm::scale(transformation, scale);
-    transformation = glm::rotate(transformation, rotation.x, glm::vec3(1, 0, 0));
-    transformation = glm::rotate(transformation, rotation.y, glm::vec3(0, 1, 0));
-    transformation = glm::rotate(transformation, rotation.z, glm::vec3(0, 0, 1));
+    transformation = glm::rotate(transformation, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+    transformation = glm::rotate(transformation, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+    transformation = glm::rotate(transformation, glm::radians(rotation.z), glm::vec3(0, 0, 1));
     this -> transform = transformation;
 }
 
