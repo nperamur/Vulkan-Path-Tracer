@@ -1,0 +1,253 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
+layout(set = 0, binding = 2) uniform sampler2D visibilityBuffer;
+layout(set = 0, binding = 4, rgba16f) uniform image2D storageImage;
+layout(set = 0, binding = 3) uniform sampler2D normalBuffer;
+
+struct RayPayload {
+    vec4 hitColor;
+    vec4 normal;
+    float distance;
+    uint materialIndex;
+    float pad1;
+    float pad2;
+};
+
+layout(push_constant) uniform PushConstants {
+    uint frameCount;
+} pushConstants;
+
+layout(set = 1, binding = 0) uniform LightUBO {
+    vec4 position;
+    vec4 color;
+    vec4 playerPos;
+    int frameCount;
+} lightData;
+
+float hash(vec2 uv, uint seed) {
+    uint x = floatBitsToUint(uv.x);
+    uint y = floatBitsToUint(uv.y);
+
+    uint h = x ^ (y + 0x9e3779b9U + (x << 6) + (x >> 2)) ^ seed;
+    h ^= h >> 16;
+    h *= 0x7feb352dU;
+    h ^= h >> 15;
+    h *= 0x846ca68bU;
+    h ^= h >> 16;
+
+    return float(h & 0x007fffffU) / float(0x00800000U);
+}
+
+vec2 getRand2(vec2 uv, uint frameCount) {
+    float r1 = hash(uv, frameCount);
+    float r2 = hash(uv, frameCount + 1234567u);
+    return vec2(r1, r2);
+}
+
+
+
+struct Material {
+    vec4 color;
+    float diffuseAlbedo;
+};
+
+layout(std430, set = 0, binding = 5) buffer Materials {
+    Material materialData[];
+} materials;
+
+layout(set = 1, binding = 1) uniform InverseViewProj {
+    mat4 invViewMatrix;
+    mat4 invProjMatrix;
+} inverseViewProj;
+
+layout(location = 0) rayPayloadEXT RayPayload rayPayload;
+
+const float PI = 3.14159265359;
+
+
+//BRDF Calculation
+float getDiffuseBRDF(Material material) {
+    return material.diffuseAlbedo / PI;
+}
+
+
+void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b) {
+    if (n.y < -0.999999) {
+        t = vec3(-1, 0, 0);
+        b = vec3(0, 0, -1);
+        return;
+    }
+    float a = 1.0 / (1.0 + n.y);
+    float d = -n.x * n.z * a;
+    t = vec3(1.0 - n.x * n.x * a, -n.x, d);
+    b = vec3(d, -n.z, 1.0 - n.z * n.z * a);
+}
+
+vec3 getRandomDiffuseRayDir(vec2 rand, vec3 normal) {
+    float r = sqrt(rand.x);
+    float theta = 2 * PI * rand.y;
+
+    //converting to polar
+    float x = r * sin(theta);
+    float y = r * cos(theta);
+    float z = sqrt(max(1 - rand.x, 0.0));
+
+    vec3 localVec = vec3(x, y, z);
+
+    vec3 tangent;
+    vec3 bitangent;
+    buildOrthonormalBasis(normal, tangent, bitangent);
+    mat3 tbn = mat3(tangent, bitangent, normal);
+
+    return tbn * localVec;
+
+}
+
+// VNDF GGX sampling
+// Source: https://community.intel.com/t5/Blogs/Tech-Innovation/Artificial-Intelligence-AI/VNDF-importance-sampling-for-an-isotropic-Smith-GGX-distribution/post/1599836
+// u: random params, wi: incoming ray direction, alpha: roughness, n: surface normal
+// returns microfacet normal
+vec3 SampleVndf_GGX(vec2 u, vec3 wi, float alpha, vec3 n)
+{
+    // decompose the vector in parallel and perpendicular components
+    vec3 wi_z = n * dot(wi, n);
+    vec3 wi_xy = wi - wi_z;
+    // warp to the hemisphere configuration
+    vec3 wiStd = normalize(wi_z - alpha * wi_xy);
+    // sample a spherical cap in (-wiStd.z, 1]
+    float wiStd_z = dot(wiStd, n);
+    float phi = (2.0f * u.x - 1.0f) * PI;
+    float z = (1.0f - u.y) * (1.0f + wiStd_z) - wiStd_z;
+    float sinTheta = sqrt(clamp(1.0f - z * z, 0.0f, 1.0f));
+    float x = sinTheta * cos(phi);
+    float y = sinTheta * sin(phi);
+    vec3 cStd = vec3(x, y, z);
+    // reflect sample to align with normal
+    vec3 up = vec3(0, 0, 1);
+    vec3 wr = n + up;
+    vec3 c = dot(wr, cStd) * wr / wr.z - cStd;
+    // compute halfway direction as standard normal
+    vec3 wmStd = c + wiStd;
+    vec3 wmStd_z = n * dot(n, wmStd);
+    vec3 wmStd_xy = wmStd_z - wmStd;
+    // warp back to the ellipsoid configuration
+    vec3 wm = normalize(wmStd_z + alpha * wmStd_xy);
+    // return final normal
+    return wm;
+}
+
+
+
+float FresnelSchlick(vec3 normal, vec3 view, float f0) {
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - dot(normal, view), 0.0, 1.0), 5.0);
+}
+
+const int NUM_SAMPLES_PER_PIXEL = 1;
+const int NUM_MAX_BOUNCES = 4;
+const float lightIntensity = 10;
+const vec3 skyColor = vec3(0.4, 0.45, 0.9);
+
+void main() {
+    const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+    vec3 lightSum = vec3(0.0);
+    float depth = texelFetch(depthBuffer, pixelCoords, 0).r;
+    if (depth >= 1) {
+        imageStore(storageImage, pixelCoords, vec4(skyColor, 1.0));
+        return;
+    }
+    for (int n = 0; n < NUM_SAMPLES_PER_PIXEL; n++) {
+        vec3 accumulatedLight = vec3(0.0);
+        float tMin = 0.01;
+        float tMax = 1000.0f;
+
+        vec2 uv = vec2(gl_LaunchIDEXT.xy + 0.5) / vec2(gl_LaunchSizeEXT.xy);
+        vec4 ndcPos = vec4(uv * 2.0 - 1.0, depth, 1.0);
+        vec4 origin = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * ndcPos);
+        origin /= origin.w;
+
+        vec3 normal = normalize(texelFetch(normalBuffer, pixelCoords, 0).rgb);
+
+        Material material = materials.materialData[int(texelFetch(visibilityBuffer, pixelCoords, 0).r)];
+
+        vec3 throughput = vec3(1.0);
+
+        rayPayload.distance = 0.0f;
+        rayPayload.materialIndex = 0;
+        rayPayload.normal = vec4(0.0001f);
+        traceRayEXT(
+            topLevelAS,
+            gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+            0xFF,
+            0,
+            0,
+            0,
+            origin.xyz,
+            tMin,
+            normalize(lightData.position.xyz),
+            tMax,
+            0
+        );
+        vec3 directLight = vec3(0.0);
+        if (rayPayload.distance < 0) {
+            directLight = material.color.rgb * getDiffuseBRDF(material) * max(0, dot(normal, normalize(lightData.position.xyz))) * lightIntensity * lightData.color.rgb;
+        }
+        accumulatedLight += directLight * throughput;
+        throughput *= material.diffuseAlbedo * material.color.rgb;
+
+        for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
+            vec3 directLight = vec3(0.0);
+            vec3 rayDir = getRandomDiffuseRayDir(getRand2(uv, pushConstants.frameCount + uint(i * 13) + uint(n * 97)), normal);
+
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsOpaqueEXT,
+                0xFF,
+                0,
+                0,
+                0,
+                origin.xyz,
+                tMin,
+                rayDir,
+                tMax,
+                0
+            );
+            if (rayPayload.distance < 0) {
+                accumulatedLight += skyColor * throughput;
+                break;
+            }
+            normal = rayPayload.normal.xyz;
+            origin = vec4(origin.xyz + rayDir * rayPayload.distance + normal * 0.0001, 1);
+            material = materials.materialData[rayPayload.materialIndex];
+
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+                0xFF,
+                0,
+                0,
+                0,
+                origin.xyz,
+                tMin,
+                normalize(lightData.position.xyz),
+                tMax,
+                0
+            );
+            if (rayPayload.distance < 0) {
+                directLight = material.color.rgb * getDiffuseBRDF(material) * max(0, dot(normal, normalize(lightData.position.xyz))) * lightIntensity * lightData.color.rgb;
+            }
+
+            accumulatedLight += directLight * throughput;
+            throughput *= material.diffuseAlbedo * material.color.rgb;
+
+        }
+
+        lightSum += accumulatedLight;
+
+    }
+
+    vec3 finalLight = lightSum / NUM_SAMPLES_PER_PIXEL;
+    imageStore(storageImage, pixelCoords, vec4(finalLight, 1));
+}
