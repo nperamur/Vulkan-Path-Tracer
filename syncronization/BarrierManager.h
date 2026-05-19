@@ -97,7 +97,7 @@ class BarrierManager {
     vk::Flags<vk::AccessFlagBits2> resolveRead(uint32_t state);
     vk::Flags<vk::AccessFlagBits2> resolveWrite(uint32_t state);
 
-    vk::PipelineStageFlagBits2 resolveStage(uint32_t state);
+    vk::Flags<vk::PipelineStageFlagBits2> resolveStage(uint32_t state);
     vk::ImageAspectFlagBits resolveImageAspectFlagBits(uint32_t state, uint32_t state2);
 
 

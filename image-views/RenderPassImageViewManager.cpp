@@ -88,7 +88,7 @@ void RenderPassImageViewManager::registerImage(std::string id, VkFormat format, 
  * Resizes the image by destroying all the images and re-creating them.
  */
 void RenderPassImageViewManager::resizeImage(std::string id, int width, int height) {
-    VkFormat format;
+    VkFormat format = {};
     for (int i = 0; i < images.size(); i += Config::maxFramesInFlight) {
         if (images[i].identifier == id) {
             device->waitIdle();

@@ -47,11 +47,11 @@ void ShaderPipeline::setUniform(DescriptorBinding descriptorBinding, void *data,
         );
         device->updateDescriptorSets(write, nullptr);
         persistentUBOPointers[uboBuffers[frameIndex][descriptorBinding]] = resultInfo.pMappedData;
-        for (int i = 0; i < uboBuffers.size(); i++) {
-            if (i != frameIndex) {
-                setUniform(descriptorBinding, data, size, i);
-            }
-        }
+        // for (int i = 0; i < uboBuffers.size(); i++) {
+        //     if (i != frameIndex) {
+        //         setUniform(descriptorBinding, data, size, i);
+        //     }
+        // }
     }
     // void* mapped;
     // vmaMapMemory(*allocator, uboAllocations[frameIndex][descriptorBinding], &mapped);
@@ -97,11 +97,11 @@ void ShaderPipeline::setStorageBuffer(DescriptorBinding descriptorBinding, void 
         );
         device->updateDescriptorSets(write, nullptr);
         persistentStoragePointers[storageBuffers[frameIndex][descriptorBinding]] = resultInfo.pMappedData;
-        for (int i = 0; i < storageBuffers.size(); i++) {
-            if (i != frameIndex) {
-                setStorageBuffer(descriptorBinding, data, size, i);
-            }
-        }
+        // for (int i = 0; i < storageBuffers.size(); i++) {
+        //     if (i != frameIndex) {
+        //         setStorageBuffer(descriptorBinding, data, size, i);
+        //     }
+        // }
     }
     memcpy(persistentStoragePointers[storageBuffers[frameIndex][descriptorBinding]], data, size);
     vmaFlushAllocation(*allocator, storageBufferAllocations[frameIndex][descriptorBinding], 0, size);

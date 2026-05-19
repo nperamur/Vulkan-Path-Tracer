@@ -124,6 +124,10 @@ endif()
 #vma
 if(MSVC)
     add_compile_options(/MP)
+#    target_compile_options(vulkan_offline_raytracer PRIVATE /we4700 /we4701)
+#    target_compile_options(vulkan_offline_raytracer PRIVATE /analyze)
+#    target_compile_options(vulkan_offline_raytracer PRIVATE /RTC1)
+
 endif()
 
 include(FetchContent)

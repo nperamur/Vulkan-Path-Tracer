@@ -38,6 +38,7 @@ class Application {
     std::optional<vk::raii::CommandPool> commandPool;
     std::optional<vk::raii::CommandBuffers> commandBuffers;
     std::optional<vk::Extent2D> swapChainExtent;
+    std::array<vk::Fence, 3> imagesInFlight;
     // VkImage depthImage;
     // VmaAllocation depthImageAllocation;
     std::array<VkImage, 3> depthImages;

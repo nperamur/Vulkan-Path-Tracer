@@ -42,10 +42,11 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     sceneManager.emplace(loader, device, physicalDevice, mvp);
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR16G16Sfloat, vk::Format::eR16G16B16A16Sfloat}, *allocator, triangleDescriptorsInfo, 3));
+                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, triangleDescriptorsInfo, 3));
 
-    this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  0);
-
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
+        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  i);
+    }
     //raytracing
     DescriptorsInfo raytracingDescriptorsInfo = {
         .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 2},
@@ -78,8 +79,8 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R16G16_SFLOAT, width, height);
-    imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R16G16B16A16_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
 
 
     initScreenQuad(physicalDevice);
@@ -152,9 +153,12 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     barrierManager -> commit(commandBuffer);
     // Render Graph Stuff...
     uint32_t index = 0;
+
+    commandBuffer.pushConstants2({rtShaderPipeline -> getPipelineLayout(), vk::ShaderStageFlagBits::eRaygenKHR, 0, sizeof(uint32_t), &light.frameCount});
     renderGraph.initCallbacks([&](Model& model)
-        { renderModel(commandBuffer, model, index, viewport, rect2D); index++; }, [&]()
-        { traceRays(commandBuffer, viewport, rect2D, width, height, 1); }, [this, &commandBuffer, &triangleShader, &rtShaderPipeline, frameIndex]() {
+        { renderModel(commandBuffer, model, index, viewport, rect2D); index++; }, [&]() {
+            traceRays(commandBuffer, viewport, rect2D, width, height, 1);
+        }, [this, &commandBuffer, &triangleShader, &rtShaderPipeline, frameIndex]() {
             commandBuffer.pushConstants2({ triangleShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp });
         }
     );
@@ -229,6 +233,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
     light.frameCount++;
     commandBuffer.end();
+    // device->waitIdle();
 
 }
 

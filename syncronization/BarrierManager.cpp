@@ -64,11 +64,11 @@ void BarrierManager::commit(vk::raii::CommandBuffer& commandBuffer) {
 }
 
 
-vk::PipelineStageFlagBits2 BarrierManager::resolveStage(uint32_t state) {
+vk::Flags<vk::PipelineStageFlagBits2> BarrierManager::resolveStage(uint32_t state) {
     if (state & topOfPipe) return vk::PipelineStageFlagBits2::eTopOfPipe;
     if (state & bottomOfPipe) return vk::PipelineStageFlagBits2::eBottomOfPipe;
     if (state & raytracing) return vk::PipelineStageFlagBits2::eRayTracingShaderKHR;
-    if (state & earlyFragmentTests) return vk::PipelineStageFlagBits2::eEarlyFragmentTests;
+    if (state & earlyFragmentTests) return vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
     if (state & colorAttachmentOutput) return vk::PipelineStageFlagBits2::eColorAttachmentOutput;
     if (state & vertexShader) return vk::PipelineStageFlagBits2::eVertexShader;
     if (state & fragmentShader) return vk::PipelineStageFlagBits2::eFragmentShader;

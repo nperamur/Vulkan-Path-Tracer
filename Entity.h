@@ -10,6 +10,7 @@
 struct alignas(16) Material {
     glm::vec4 color;
     float diffuseAlbedo;
+    float pad[3];
 };
 
 class Entity {

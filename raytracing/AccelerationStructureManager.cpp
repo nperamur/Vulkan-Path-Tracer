@@ -1,5 +1,7 @@
 
 #include "AccelerationStructureManager.h"
+#include <deque>
+
 
 #include <cstdint>
 /**
@@ -32,12 +34,84 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
     vk::Queue queue = device -> getQueue(0, 0);
     queue.waitIdle();
     commandBuffers[0].begin(beginInfo);
-    buildBLAS(commandBuffers[0]);
+    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> buildInfos;
+    std::vector<vk::AccelerationStructureBuildRangeInfoKHR> rangeInfos;
+    buildBLAS(commandBuffers[0], &buildInfos, rangeInfos);
     buildTLASGeometry(blasData, entities, &mvp);
-    buildTLAS(commandBuffers[0]);
+    buildTLAS(commandBuffers[0], &buildInfos, rangeInfos);
+
+
+
+    std::vector<VkBuffer> scratchBuffers(buildInfos.size());
+    std::vector<VmaAllocation> scratchAllocations(buildInfos.size());
+    int i = 0;
+    for (auto& buildInfo : buildInfos) {
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR asProps{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR
+        };
+
+        VkPhysicalDeviceProperties2 props2{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
+        };
+        uint32_t primitiveCount;
+        if (i == buildInfos.size() - 1) {
+            primitiveCount = geometry.tlasGeometry.primitiveCount;
+        } else {
+            primitiveCount = geometry.blasGeometry[i].primitiveCount;
+        }
+        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo = device -> getAccelerationStructureBuildSizesKHR(
+            vk::AccelerationStructureBuildTypeKHR::eDevice,
+            buildInfo,
+            primitiveCount
+        );
+        props2.pNext = &asProps;
+
+        vkGetPhysicalDeviceProperties2(**physicalDevice, &props2);
+        VkDeviceSize scratchAlign = asProps.minAccelerationStructureScratchOffsetAlignment;
+        VkBuffer scratchBuffer;
+        VmaAllocation scratchAllocation;
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+
+        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |  VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        allocInfo.minAlignment = scratchAlign;
+        bufferInfo.size = sizeInfo.buildScratchSize + scratchAlign;
+        vmaCreateBuffer(*allocator, &bufferInfo, &allocInfo, &scratchBuffer, &scratchAllocation, nullptr);
+        vk::BufferDeviceAddressInfo deviceAddressInfo(
+            scratchBuffer
+        );
+        vk::DeviceAddress address = device -> getBufferAddress(deviceAddressInfo);
+        vk::DeviceAddress alignedAddress = (address + scratchAlign - 1) & ~(scratchAlign - 1);
+        buildInfo.setScratchData(alignedAddress);
+        scratchBuffers[i] = scratchBuffer;
+        scratchAllocations[i] = scratchAllocation;
+        i++;
+    }
+
+    //     vk::BufferMemoryBarrier2 scratchBarrier(
+    //     vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+    //     vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+    //     vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
+    //     vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
+    //     0, 0,
+    //     scratchBuffer, 0, VK_WHOLE_SIZE
+    // );
+    std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> rangeInfoPointers(rangeInfos.size());
+
+    for (size_t j = 0; j < rangeInfos.size(); ++j) {
+        rangeInfoPointers[j] = &rangeInfos[j];
+    }
+
+    commandBuffers[0].buildAccelerationStructuresKHR(buildInfos, rangeInfoPointers);
     commandBuffers[0].end();
     queue.submit(submitInfo);
     queue.waitIdle();
+
+    for (int j = 0; j < buildInfos.size(); j++) {
+        vmaDestroyBuffer(*allocator, scratchBuffers[j], scratchAllocations[j]);
+    }
 
 }
 
@@ -46,9 +120,11 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
 /**
  * Builds the bottom-level acceleration structure
  */
-void AccelerationStructureManager::buildBLAS(vk::raii::CommandBuffer& commandBuffer) {
+void AccelerationStructureManager::buildBLAS(vk::raii::CommandBuffer& commandBuffer, std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> *buildInfos, std::vector<vk::AccelerationStructureBuildRangeInfoKHR>& rangeInfos) {
     for (int i = 0; i < geometry.blasGeometry.size(); i++) {
         AccelerationStructureData accelStructureData = {.handle = nullptr, .buffer = nullptr, .allocation = nullptr, .deviceAddress = 0};
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
+        vk::AccelerationStructureBuildRangeInfoKHR rangeInfo;
         buildAccelerationStructure(
             vk::AccelerationStructureTypeKHR::eBottomLevel,
             &accelStructureData.handle,
@@ -57,17 +133,23 @@ void AccelerationStructureManager::buildBLAS(vk::raii::CommandBuffer& commandBuf
             commandBuffer,
             &accelStructureData.buffer,
             &accelStructureData.allocation,
-            &accelStructureData.deviceAddress
-
+            &accelStructureData.deviceAddress,
+            &buildInfo,
+            &rangeInfo
         );
         blasData.push_back(std::move(accelStructureData));
+        buildInfos->push_back(buildInfo);
+        rangeInfos.push_back(rangeInfo);
     }
 }
 
 /**
  * Builds the top-level acceleration structure
  */
-void AccelerationStructureManager::buildTLAS(vk::raii::CommandBuffer& commandBuffer) {
+void AccelerationStructureManager::buildTLAS(vk::raii::CommandBuffer& commandBuffer, std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> *buildInfos, std::vector<vk::AccelerationStructureBuildRangeInfoKHR>& rangeInfos) {
+
+    vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
+    vk::AccelerationStructureBuildRangeInfoKHR rangeInfo;
     buildAccelerationStructure(
         vk::AccelerationStructureTypeKHR::eTopLevel,
         &tlasData -> handle,
@@ -76,8 +158,13 @@ void AccelerationStructureManager::buildTLAS(vk::raii::CommandBuffer& commandBuf
         commandBuffer,
         &tlasData -> buffer,
         &tlasData -> allocation,
-        &tlasData -> deviceAddress
+        &tlasData -> deviceAddress,
+        &buildInfo,
+        &rangeInfo
     );
+
+    buildInfos->push_back(buildInfo);
+    rangeInfos.push_back(rangeInfo);
 }
 
 
@@ -87,8 +174,8 @@ void AccelerationStructureManager::buildTLAS(vk::raii::CommandBuffer& commandBuf
  * updating passed-in acceleration structure allocation pointers when done
  */
 void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
-    vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry, vk::raii::CommandBuffer& commandBuffer,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress) {
-    vk::AccelerationStructureBuildGeometryInfoKHR buildInfo(
+    vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry, vk::raii::CommandBuffer& commandBuffer,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress, vk::AccelerationStructureBuildGeometryInfoKHR* buildInfo, vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo) {
+    *buildInfo = vk::AccelerationStructureBuildGeometryInfoKHR(
         accelerationStructureType,
         vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace | vk::BuildAccelerationStructureFlagBitsKHR::eAllowDataAccess,
         vk::BuildAccelerationStructureModeKHR::eBuild,
@@ -105,7 +192,7 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
 
     vk::AccelerationStructureBuildSizesInfoKHR sizeInfo = device -> getAccelerationStructureBuildSizesKHR(
         vk::AccelerationStructureBuildTypeKHR::eDevice,
-        buildInfo,
+        *buildInfo,
         {primitiveCount}
     );
 
@@ -121,24 +208,6 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
 
     vkGetPhysicalDeviceProperties2(**physicalDevice, &props2);
 
-    VkDeviceSize scratchAlign = asProps.minAccelerationStructureScratchOffsetAlignment;
-    VkBuffer scratchBuffer;
-    VmaAllocation scratchAllocation;
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-
-    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |  VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT;
-    VmaAllocationCreateInfo allocInfo{};
-    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    allocInfo.minAlignment = scratchAlign;
-    bufferInfo.size = sizeInfo.buildScratchSize + scratchAlign;
-    vmaCreateBuffer(*allocator, &bufferInfo, &allocInfo, &scratchBuffer, &scratchAllocation, nullptr);
-    vk::BufferDeviceAddressInfo deviceAddressInfo(
-        scratchBuffer
-    );
-    vk::DeviceAddress address = device -> getBufferAddress(deviceAddressInfo);
-    vk::DeviceAddress alignedAddress = (address + scratchAlign - 1) & ~(scratchAlign - 1);
-    buildInfo.setScratchData(alignedAddress);
 
     VkBuffer asBuffer;
     VmaAllocation asAllocation;
@@ -159,7 +228,7 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
     );
     auto as = device->createAccelerationStructureKHR(accelerationStructureCreateInfo);
 
-    buildInfo.setDstAccelerationStructure(as);
+    buildInfo -> setDstAccelerationStructure(as);
 
     vk::AccelerationStructureDeviceAddressInfoKHR asDeviceAddressInfo(
         as
@@ -167,43 +236,26 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
     vk::DeviceAddress asDeviceAddress = device -> getAccelerationStructureAddressKHR(asDeviceAddressInfo);
 
 
-    vk::AccelerationStructureBuildRangeInfoKHR rangeInfo(
-        primitiveCount,
-        0,
-        0,
-        0
-    );
-
-    commandBuffer.buildAccelerationStructuresKHR(buildInfo, &rangeInfo);
     vk::MemoryBarrier2 asBarrier(
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
             vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
             vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
             vk::AccessFlagBits2::eAccelerationStructureReadKHR
         );
-    vk::BufferMemoryBarrier2 scratchBarrier(
-        vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-        vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-        0, 0,
-        scratchBuffer, 0, VK_WHOLE_SIZE
-    );
 
     vk::DependencyInfo dependencyInfo(
             vk::DependencyFlags(),
             asBarrier,
-            scratchBarrier,
+            nullptr,
             nullptr
         );
 
     commandBuffer.pipelineBarrier2(dependencyInfo);
-
     *accelStructureHandle = std::move(as);
-    vmaDestroyBuffer(*allocator, scratchBuffer, scratchAllocation);
     *deviceAddress = asDeviceAddress;
     *buffer = asBuffer;
     *allocation = asAllocation;
+    *rangeInfo = vk::AccelerationStructureBuildRangeInfoKHR(primitiveCount, 0, 0, 0);
 }
 
 
@@ -223,10 +275,10 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
         memcpy(&transformMatrix, &transposed, sizeof(vk::TransformMatrixKHR));
         vk::AccelerationStructureInstanceKHR asInstance(
             transformMatrix,
-            i,
+            (entity.hasMaterial()) ? materialIndex : 0,
             0xFF,
             (entity.hasMaterial()) ? (materialIndex) : 0,
-            {},
+            vk::GeometryInstanceFlagBitsKHR::eTriangleFrontCounterclockwise,
             blasData[i].deviceAddress
         );
         if (entity.hasMaterial()) {

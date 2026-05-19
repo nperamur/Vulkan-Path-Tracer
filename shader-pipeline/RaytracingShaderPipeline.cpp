@@ -41,6 +41,10 @@ void RaytracingShaderPipeline::bind(vk::raii::CommandBuffer &commandBuffer, int 
 
 }
 
+vk::raii::PipelineLayout & RaytracingShaderPipeline::getPipelineLayout() {
+    return *rtPipelineLayout;
+}
+
 void RaytracingShaderPipeline::setUpPipeline() {
     std::vector<vk::PipelineShaderStageCreateInfo> info = getStageCreateInfos();
 
@@ -70,7 +74,13 @@ void RaytracingShaderPipeline::setUpPipeline() {
          ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers) ? 1 : 0) +
          ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers) ? 1 : 0);
 
-    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 0, nullptr);
+
+    vk::PushConstantRange pushRange(
+        vk::ShaderStageFlagBits::eRaygenKHR,
+        0,
+        sizeof(uint32_t)
+    );
+    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 1, &pushRange);
 
     rtPipelineLayout.emplace(*device, layoutInfo);
     vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo(

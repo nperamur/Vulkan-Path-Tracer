@@ -51,18 +51,17 @@ class AccelerationStructureManager {
     private:
 
     void buildAccelerationStructure(vk::AccelerationStructureTypeKHR accelerationStructureType,
-                                    vk::raii::AccelerationStructureKHR *accelStructureHandle, uint32_t primitiveCount,
-                                    vk::AccelerationStructureGeometryKHR &geometry, vk::raii::CommandBuffer& commandBuffer, VkBuffer *buffer,
-                                    VmaAllocation *allocation, vk::DeviceAddress *deviceAddress);
+    vk::raii::AccelerationStructureKHR* accelStructureHandle, uint32_t primitiveCount, vk::AccelerationStructureGeometryKHR& geometry, vk::raii::CommandBuffer& commandBuffer,  VkBuffer* buffer, VmaAllocation* allocation, vk::DeviceAddress* deviceAddress,
+    vk::AccelerationStructureBuildGeometryInfoKHR* buildInfo, vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo);
 
 
     std::vector<AccelerationStructureData>& getBLASData() {
         return blasData;
     }
 
-    void buildBLAS(vk::raii::CommandBuffer& commandBuffer);
+    void buildBLAS(vk::raii::CommandBuffer& commandBuffer, std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> *buildInfos, std::vector<vk::AccelerationStructureBuildRangeInfoKHR>& rangeInfos);
 
-    void buildTLAS(vk::raii::CommandBuffer& commandBuffer);
+    void buildTLAS(vk::raii::CommandBuffer& commandBuffer, std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> *buildInfos, std::vector<vk::AccelerationStructureBuildRangeInfoKHR>& rangeInfos);
 
     void buildTLASGeometry(std::vector<AccelerationStructureData> &blasData, std::vector<Entity> &entities, MVP *mvp);
     void buildBLASGeometry(std::vector<Entity>& entities);

@@ -56,6 +56,7 @@ class RaytracingShaderPipeline : public ShaderPipeline {
             }
             return &emptyRegion;
         }
+    vk::raii::PipelineLayout& getPipelineLayout();
 
     protected:
         void setUpPipeline() override;

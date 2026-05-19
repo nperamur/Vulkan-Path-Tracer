@@ -47,10 +47,11 @@ struct InverseViewProj {
 
 
 struct alignas(16) Light {
-    glm::vec4 position;
-    glm::vec4 color;
-    glm::vec4 playerPos;
-    int frameCount;
+    glm::vec4 position = glm::vec4(0.0f);
+    glm::vec4 color = glm::vec4(0.0f);
+    glm::vec4 playerPos = glm::vec4(0.0f);
+    int frameCount = 0;
+    float padding[3];
 };
 
 class Renderer {

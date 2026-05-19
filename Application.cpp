@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#include <unordered_set>
 
 #ifndef VULKAN_SDK_FOUND
 #include <volk.h>
@@ -65,17 +66,23 @@ void Application::loop(GLFWwindow* window) {
         }
         device->waitForFences({*imageAvailableFences.at(currentFrame), *syncHostWithDeviceFences.at(currentFrame)}, VK_TRUE, UINT64_MAX);
 
-        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eAllCommands };
         int imageIndex = getNextImage(currentFrame);
         if (imageIndex == -1) {
             //std::cout << "Swapchain next image retrieval failed";
+            device -> waitIdle();
             currentFrame = 0;
             continue;
         }
+        if (imagesInFlight[imageIndex]) {
+            device->waitForFences({imagesInFlight[imageIndex]}, VK_TRUE, UINT64_MAX);
+        }
+        imagesInFlight[imageIndex] = *syncHostWithDeviceFences.at(currentFrame);
         camera.handleInputs();
         commandBuffers->at(imageIndex).reset();
         renderer -> render(commandBuffers->at(imageIndex), imageViews.at(imageIndex),
-            depthImageViews[currentFrame].value(), swapChain -> getImages().at(imageIndex), depthImages[currentFrame], currentFrame);
+            depthImageViews[imageIndex].value(), swapChain -> getImages().at(imageIndex), depthImages[imageIndex], imageIndex);
         draw(imageIndex, flagBits, currentFrame);
 
         uint32_t image = imageIndex;
@@ -349,6 +356,9 @@ void Application::setupSwapChain() {
     vk::SurfaceCapabilitiesKHR capabilities = physicalDevice -> getSurfaceCapabilitiesKHR(*surface);
     if (capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0) return;
     imageViews.clear();
+    for (int i = 0; i < imagesInFlight.size(); i++) {
+        imagesInFlight[i] = nullptr;
+    }
     swapChain.reset();
 
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
@@ -363,11 +373,10 @@ void Application::setupSwapChain() {
     std::optional<vk::ColorSpaceKHR> colorSpace;
 
     for (auto& surfaceFormat : surfaceFormats) {
-        if (surfaceFormat.format == vk::Format::eB8G8R8A8Srgb) {
+        if (surfaceFormat.format == vk::Format::eB8G8R8A8Srgb && surfaceFormat.colorSpace == vk::ColorSpaceKHR::eVkColorspaceSrgbNonlinear) {
             swapChainImageFormat.emplace(surfaceFormat.format);
-        }
-        if (surfaceFormat.colorSpace == vk::ColorSpaceKHR::eVkColorspaceSrgbNonlinear) {
             colorSpace.emplace(surfaceFormat.colorSpace);
+            break;
         }
     }
 
