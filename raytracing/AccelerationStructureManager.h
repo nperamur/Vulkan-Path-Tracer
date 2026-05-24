@@ -43,6 +43,10 @@ class AccelerationStructureManager {
         return tlasData.value();
     }
 
+    void createScratchBuffers(
+    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR>& buildInfos,
+    std::vector<VkBuffer>& scratchBuffers,
+    std::vector<VmaAllocation>& scratchAllocations, bool isTlas);
 
     void cleanUp();
 

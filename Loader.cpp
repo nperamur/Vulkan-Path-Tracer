@@ -96,12 +96,12 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
     // normal buffer
     if (normals.has_value()) {
         vk::BufferCreateInfo normalBufferCreateInfo({}, normals->size() * sizeof(float),
-            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive);
+            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::SharingMode::eExclusive);
         normalBuffer.emplace(device, normalBufferCreateInfo);
         auto normalMemReqs = normalBuffer->getMemoryRequirements();
         for (int i = 0; i < memProps.memoryTypeCount; i++) {
             if ((normalMemReqs.memoryTypeBits & (1 << i)) != 0 && (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
-                normalMemory.emplace(device, vk::MemoryAllocateInfo(normalMemReqs.size, i));
+                normalMemory.emplace(device, vk::MemoryAllocateInfo(normalMemReqs.size, i, memFlagsInfo));
                 break;
             }
         }

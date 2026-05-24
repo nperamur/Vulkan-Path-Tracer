@@ -6,7 +6,7 @@ struct RayPayload {
     vec4 normal;
     float distance;
     uint materialIndex;
-    float pad1;
+    uint primitiveIndex;
     float pad2;
 };
 
@@ -18,4 +18,5 @@ void main() {
     rayPayload.distance = -1.0f;
     rayPayload.materialIndex = 0;
     rayPayload.normal = vec4(0);
+    rayPayload.primitiveIndex = 0;
 }

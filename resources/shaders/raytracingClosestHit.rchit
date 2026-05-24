@@ -7,8 +7,8 @@ struct RayPayload {
     vec4 normal;
     float distance;
     uint materialIndex;
+    uint primitiveIndex;
     float pad1;
-    float pad2;
 };
 
 layout(shaderRecordEXT, std430) buffer Record {
@@ -31,6 +31,10 @@ void main() {
     vec3 e1 = v1 - v0;
     vec3 e2 = v2 - v0;
     vec3 objNormal = normalize(cross(e1, e2));
+    if (gl_HitKindEXT == -gl_HitKindBackFacingTriangleEXT) {
+        objNormal = -objNormal;
+    }
     vec3 worldNormal = normalize(transpose(mat3(gl_WorldToObjectEXT)) * objNormal);
     rayPayload.normal = vec4(worldNormal, 1);
+    rayPayload.primitiveIndex = gl_PrimitiveID;
 }

@@ -6,11 +6,17 @@
 #include "glm/fwd.hpp"
 #include "glm/vec3.hpp"
 #include "glm/vec4.hpp"
+#include "glm/glm.hpp"
 
 struct alignas(16) Material {
     glm::vec4 color;
-    float diffuseAlbedo;
-    float pad[3];
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    uint64_t vertexAddress;
+    uint64_t indexAddress;
+    uint64_t normalAddress;
+    float roughness;
+    float metalness;
+    float reflectivity;
 };
 
 class Entity {
@@ -50,9 +56,13 @@ class Entity {
             this->scale = scale;
         }
 
-        Material& getMaterial();
+        Material getMaterial();
         Model& getModel();
-        void setMaterial(Material& material);
+        void setMaterial(Material material);
+
+        void setVertexAddress(uint64_t vertexAddress);
+        void setIndexAddress(uint64_t indexAddress);
+        void setNormalAddress(uint64_t normalAddress);
 
         std::string getIdentifier();
 

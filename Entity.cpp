@@ -24,6 +24,7 @@ void Entity::updateTransformationMatrix() {
     transformation = glm::rotate(transformation, glm::radians(rotation.y), glm::vec3(0, 1, 0));
     transformation = glm::rotate(transformation, glm::radians(rotation.z), glm::vec3(0, 0, 1));
     this -> transform = transformation;
+    this -> material -> modelMatrix = glm::mat4(transformation);
 }
 
 void Entity::increasePosition(glm::vec3 v) {
@@ -40,11 +41,12 @@ void Entity::increaseScale(glm::vec3 v) {
 
 
 
+
 bool Entity::hasMaterial() {
     return this -> material != std::nullopt;
 }
 
-Material& Entity::getMaterial() {
+Material Entity::getMaterial() {
     return this -> material.value();
 }
 
@@ -52,8 +54,20 @@ Model& Entity::getModel() {
     return model;
 }
 
-void Entity::setMaterial(Material& newMaterial) {
+void Entity::setMaterial(Material newMaterial) {
     this -> material = newMaterial;
+}
+
+void Entity::setVertexAddress(uint64_t vertexAddress) {
+    this -> material -> vertexAddress = vertexAddress;
+}
+
+void Entity::setIndexAddress(uint64_t indexAddress) {
+    this -> material -> indexAddress = indexAddress;
+}
+
+void Entity::setNormalAddress(uint64_t normalAddress) {
+    this -> material -> normalAddress = normalAddress;
 }
 
 std::string Entity::getIdentifier() {

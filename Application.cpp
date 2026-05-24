@@ -320,6 +320,9 @@ void Application::setupDevices() {
     physicalDeviceAccelerationFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
     vk::PhysicalDeviceFeatures2 physicalDeviceFeatures{};
     physicalDeviceFeatures.features.geometryShader = VK_TRUE;
+    physicalDeviceFeatures.features.shaderInt64 = VK_TRUE;
+    VkPhysicalDeviceDescriptorIndexingFeatures indexing{};
+    indexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,
@@ -335,10 +338,10 @@ void Application::setupDevices() {
     deviceCreateInfo.setPNext(&dynamicRenderingFeatures);
     sync2Features.setPNext(&deviceAddressFeatures);
     deviceAddressFeatures.setPNext(&rtFeatures);
-    rtFeatures.setPNext(physicalDeviceAccelerationFeatures);
-    physicalDeviceAccelerationFeatures.setPNext(robustnessFeatures);
-    robustnessFeatures.setPNext(physicalDeviceFeatures);
-    physicalDeviceFeatures.setPNext(positionFetchFeatures);
+    rtFeatures.setPNext(&physicalDeviceAccelerationFeatures);
+    physicalDeviceAccelerationFeatures.setPNext(&robustnessFeatures);
+    robustnessFeatures.setPNext(&physicalDeviceFeatures);
+    physicalDeviceFeatures.setPNext(&positionFetchFeatures);
 
 
 

@@ -20,30 +20,12 @@ AccelerationStructureManager::AccelerationStructureManager(vk::raii::Device &dev
 
 }
 
-/**
- * Given the entities, this method builds the acceleration structure used for ray-tracing
- */
-void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
-    buildBLASGeometry(entities);
-    vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
-    vk::raii::CommandPool commandPool(*device, poolInfo);
-    vk::CommandBufferAllocateInfo cmdAllocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
-    vk::raii::CommandBuffers commandBuffers = device -> allocateCommandBuffers(cmdAllocInfo);
-    vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    vk::SubmitInfo submitInfo({}, {}, *commandBuffers[0]);
-    vk::Queue queue = device -> getQueue(0, 0);
-    queue.waitIdle();
-    commandBuffers[0].begin(beginInfo);
-    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> buildInfos;
-    std::vector<vk::AccelerationStructureBuildRangeInfoKHR> rangeInfos;
-    buildBLAS(commandBuffers[0], &buildInfos, rangeInfos);
-    buildTLASGeometry(blasData, entities, &mvp);
-    buildTLAS(commandBuffers[0], &buildInfos, rangeInfos);
 
-
-
-    std::vector<VkBuffer> scratchBuffers(buildInfos.size());
-    std::vector<VmaAllocation> scratchAllocations(buildInfos.size());
+void AccelerationStructureManager::createScratchBuffers(
+    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR>& buildInfos,
+    std::vector<VkBuffer>& scratchBuffers,
+    std::vector<VmaAllocation>& scratchAllocations, bool isTlas)
+{
     int i = 0;
     for (auto& buildInfo : buildInfos) {
         VkPhysicalDeviceAccelerationStructurePropertiesKHR asProps{
@@ -53,8 +35,9 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
         VkPhysicalDeviceProperties2 props2{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
         };
+
         uint32_t primitiveCount;
-        if (i == buildInfos.size() - 1) {
+        if (isTlas) {
             primitiveCount = geometry.tlasGeometry.primitiveCount;
         } else {
             primitiveCount = geometry.blasGeometry[i].primitiveCount;
@@ -89,15 +72,35 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
         scratchAllocations[i] = scratchAllocation;
         i++;
     }
+}
 
-    //     vk::BufferMemoryBarrier2 scratchBarrier(
-    //     vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-    //     vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-    //     vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-    //     vk::AccessFlagBits2::eAccelerationStructureWriteKHR,
-    //     0, 0,
-    //     scratchBuffer, 0, VK_WHOLE_SIZE
-    // );
+/**
+ * Given the entities, this method builds the acceleration structure used for ray-tracing
+ */
+void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
+    buildBLASGeometry(entities);
+    vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
+    vk::raii::CommandPool commandPool(*device, poolInfo);
+    vk::CommandBufferAllocateInfo cmdAllocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+    vk::raii::CommandBuffers commandBuffers = device -> allocateCommandBuffers(cmdAllocInfo);
+    vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    vk::SubmitInfo submitInfo({}, {}, *commandBuffers[0]);
+    vk::Queue queue = device -> getQueue(0, 0);
+    queue.waitIdle();
+    commandBuffers[0].begin(beginInfo);
+    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> buildInfos;
+    std::vector<vk::AccelerationStructureBuildRangeInfoKHR> rangeInfos;
+    buildBLAS(commandBuffers[0], &buildInfos, rangeInfos);
+
+    std::vector<VkBuffer> scratchBuffers(buildInfos.size());
+    std::vector<VmaAllocation> scratchAllocations(buildInfos.size());
+    createScratchBuffers(
+        buildInfos,
+        scratchBuffers,
+        scratchAllocations,
+        false
+    );
+
     std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> rangeInfoPointers(rangeInfos.size());
 
     for (size_t j = 0; j < rangeInfos.size(); ++j) {
@@ -113,6 +116,36 @@ void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp
         vmaDestroyBuffer(*allocator, scratchBuffers[j], scratchAllocations[j]);
     }
 
+    buildTLASGeometry(blasData, entities, &mvp);
+    std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> tlasBuildInfos;
+    std::vector<vk::AccelerationStructureBuildRangeInfoKHR> tlasRangeInfos;
+    commandBuffers[0].begin(beginInfo);
+
+    buildTLAS(commandBuffers[0], &tlasBuildInfos, tlasRangeInfos);
+
+    std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> tlasRangeInfoPointers(tlasRangeInfos.size());
+
+    std::vector<VkBuffer> tlasScratchBuffers(tlasBuildInfos.size());
+    std::vector<VmaAllocation> tlasScratchAllocations(tlasBuildInfos.size());
+    createScratchBuffers(
+        tlasBuildInfos,
+        tlasScratchBuffers,
+        tlasScratchAllocations,
+        true
+    );
+
+    for (size_t j = 0; j < tlasRangeInfos.size(); ++j) {
+        tlasRangeInfoPointers[j] = &tlasRangeInfos[j];
+    }
+
+    commandBuffers[0].buildAccelerationStructuresKHR(tlasBuildInfos, tlasRangeInfoPointers);
+    commandBuffers[0].end();
+    queue.submit(submitInfo);
+    queue.waitIdle();
+
+    for (int j = 0; j < tlasBuildInfos.size(); j++) {
+        vmaDestroyBuffer(*allocator, tlasScratchBuffers[j], tlasScratchAllocations[j]);
+    }
 }
 
 

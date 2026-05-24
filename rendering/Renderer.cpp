@@ -42,7 +42,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     sceneManager.emplace(loader, device, physicalDevice, mvp);
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, triangleDescriptorsInfo, 3));
+                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32B32A32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, triangleDescriptorsInfo, 3));
 
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  i);
@@ -79,7 +79,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_B8G8R8A8_SRGB, width, height);
     imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
 
 
