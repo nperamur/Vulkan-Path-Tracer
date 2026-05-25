@@ -267,9 +267,6 @@ void processBounce(
     inout vec3 rayDir
 ) {
     vec3 microfacetNormal = SampleVndf_GGX(getRand2(uv, seed2), -prevRayDir, pow(material.roughness, 2), normal);
-    //if (isnan(microfacetNormal.x) || dot(microfacetNormal, microfacetNormal) < 1e-6) {
-        //microfacetNormal = normal;
-    //}
     bool diffuseBounce = isDiffuseBounce(uv, seed, microfacetNormal, -prevRayDir, material);
 
     vec3 directBRDF = vec3(0.0);
