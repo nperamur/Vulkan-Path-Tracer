@@ -32,7 +32,7 @@ Application* Application::app = nullptr;
 
 void Application::run() {
     setupWindow();
-    window = glfwCreateWindow(800, 600, "Vulkan Engine", NULL, NULL);
+    window = glfwCreateWindow(800, 600, "Vulkan Path Tracer", NULL, NULL);
     if (!window) {
         glfwTerminate();
     }
