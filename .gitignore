@@ -1,0 +1,35 @@
+# Build folders
+build/
+bin/
+out/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.user
+*.sln
+
+# Ninja
+.ninja_deps
+.ninja_log
+
+# Compiled objects
+*.o
+*.obj
+*.lib
+*.dll
+*.exe
+*.pdb
+
+# Shader binaries
+*.spv
+
+# Generated
+*.log
