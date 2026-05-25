@@ -132,11 +132,17 @@ vec3 getRandomDiffuseRayDir(vec2 rand, vec3 normal) {
 // returns microfacet normal
 vec3 SampleVndf_GGX(vec2 u, vec3 wi, float alpha, vec3 n)
 {
+    alpha = max(alpha, 1e-5);
+
     // decompose the vector in parallel and perpendicular components
     vec3 wi_z = n * dot(wi, n);
     vec3 wi_xy = wi - wi_z;
+
     // warp to the hemisphere configuration
-    vec3 wiStd = normalize(wi_z - alpha * wi_xy);
+    vec3 warpTarget = wi_z - alpha * wi_xy;
+    if (dot(warpTarget, warpTarget) < 1e-6) warpTarget += n * 1e-5;
+    vec3 wiStd = normalize(warpTarget);
+
     // sample a spherical cap in (-wiStd.z, 1]
     float wiStd_z = dot(wiStd, n);
     float phi = (2.0f * u.x - 1.0f) * PI;
@@ -145,24 +151,34 @@ vec3 SampleVndf_GGX(vec2 u, vec3 wi, float alpha, vec3 n)
     float x = sinTheta * cos(phi);
     float y = sinTheta * sin(phi);
     vec3 cStd = vec3(x, y, z);
+
     // reflect sample to align with normal
     vec3 up = vec3(0, 0, 1);
     vec3 wr = n + up;
+    if (abs(wr.z) < 1e-5) wr.z = 1e-5;
     vec3 c = dot(wr, cStd) * wr / wr.z - cStd;
+
     // compute halfway direction as standard normal
     vec3 wmStd = c + wiStd;
     vec3 wmStd_z = n * dot(n, wmStd);
     vec3 wmStd_xy = wmStd_z - wmStd;
+
     // warp back to the ellipsoid configuration
-    vec3 wm = normalize(wmStd_z + alpha * wmStd_xy);
+    vec3 finalWarp = wmStd_z + alpha * wmStd_xy;
+    if (dot(finalWarp, finalWarp) < 1e-6) finalWarp += n * 1e-5;
+    vec3 wm = normalize(finalWarp);
+
     // return final normal
     return wm;
 }
+
 float sampleGGXNormalDistributionFunction(float alpha, vec3 normal, vec3 halfVector) {
-    float alpha2 = pow(alpha, 2.0);
-    float NdotH2 = pow(dot(normal, halfVector), 2.0);
+    float alpha2 = alpha * alpha;
+    float NdotH = max(dot(normal, halfVector), 0.0);
+    float NdotH2 = NdotH * NdotH;
     float denom = NdotH2 * (alpha2 - 1.0) + 1.0;
-    return alpha2 / (PI * pow(denom, 2.0));
+    if (denom <= 0.0) return 0.0;
+    return alpha2 / (PI * denom * denom);
 }
 
 
@@ -231,10 +247,6 @@ float getGGX_VNDF_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir)
 
     return D * G1 / max(4.0 * NdotV, 1e-4);
 }
-//Law of reflectance
-vec3 getRandomSpecularRayDir(vec3 incomingLight, vec3 microfacetNormal) {
-    return 2 * dot(incomingLight, microfacetNormal) * microfacetNormal - incomingLight;
-}
 
 const int NUM_SAMPLES_PER_PIXEL = 1;
 const bool INTERPOLATED_NORMALS = false;
@@ -255,6 +267,9 @@ void processBounce(
     inout vec3 rayDir
 ) {
     vec3 microfacetNormal = SampleVndf_GGX(getRand2(uv, seed2), -prevRayDir, pow(material.roughness, 2), normal);
+    //if (isnan(microfacetNormal.x) || dot(microfacetNormal, microfacetNormal) < 1e-6) {
+        //microfacetNormal = normal;
+    //}
     bool diffuseBounce = isDiffuseBounce(uv, seed, microfacetNormal, -prevRayDir, material);
 
     vec3 directBRDF = vec3(0.0);
@@ -263,7 +278,9 @@ void processBounce(
     if (diffuseBounce) {
         rayDir = normalize(getRandomDiffuseRayDir(getRand2(uv, seed), normal));
     } else {
-        rayDir = normalize(getRandomSpecularRayDir(-prevRayDir, microfacetNormal));
+        vec3 reflected = reflect(prevRayDir, microfacetNormal);
+        float lenSq = dot(reflected, reflected);
+        rayDir = (lenSq > 1e-6) ? (reflected * inversesqrt(lenSq)) : reflect(prevRayDir, normal);
     }
 
     vec3 directMicrofacetNormal = normalize(-prevRayDir + normalize(lightData.position.xyz));
@@ -465,11 +482,10 @@ void main() {
                 throughput, accumulatedLight, rayDir);
         }
         if (throughput == vec3(0.0f)) break;
-
         lightSum += accumulatedLight;
     }
 
     vec3 finalLight = lightSum / NUM_SAMPLES_PER_PIXEL;
-    finalLight = finalLight / (1.0 + finalLight);
+    //finalLight = finalLight / (1.0 + finalLight);
     imageStore(storageImage, pixelCoords, vec4(finalLight, 1.0));
 }

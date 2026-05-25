@@ -97,7 +97,7 @@ foreach(GLSL_FILE ${GLSL_FILES})
     set(SPV_FILE ${CMAKE_BINARY_DIR}/resources/shaders/${FILE_NAME}.spv)
     add_custom_command(
             OUTPUT ${SPV_FILE}
-            COMMAND ${GLSLC} ${GLSL_FILE} -o ${SPV_FILE} --target-env=vulkan1.3
+            COMMAND ${GLSLC} ${GLSL_FILE} -g -o ${SPV_FILE} --target-env=vulkan1.3
             DEPENDS ${GLSL_FILE}
     )
     list(APPEND SPV_FILES ${SPV_FILE})
