@@ -1,15 +1,15 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_ray_tracing_position_fetch : require
-
 struct RayPayload {
-    vec4 hitColor;
-    vec4 normal;
+    vec3 normal;
     float distance;
     uint materialIndex;
     uint primitiveIndex;
-    float pad1;
+    uint pad1;
+    uint pad2;
 };
+
 
 layout(shaderRecordEXT, std430) buffer Record {
     uint materialIndex;
@@ -21,7 +21,6 @@ layout(location = 0) rayPayloadInEXT RayPayload rayPayload;
 
 void main() {
     rayPayload.distance = gl_HitTEXT;
-    rayPayload.hitColor = vec4(0.0f);
     //rayPayload.materialIndex = sbtRecord.materialIndex;
     rayPayload.materialIndex = gl_InstanceCustomIndexEXT;
 
@@ -35,6 +34,6 @@ void main() {
         objNormal = -objNormal;
     }
     vec3 worldNormal = normalize(transpose(mat3(gl_WorldToObjectEXT)) * objNormal);
-    rayPayload.normal = vec4(worldNormal, 1);
+    rayPayload.normal = worldNormal;
     rayPayload.primitiveIndex = gl_PrimitiveID;
 }
