@@ -141,4 +141,17 @@ FetchContent_MakeAvailable(VulkanMemoryAllocator)
 
 target_link_libraries(vulkan_pathtracer PRIVATE VulkanMemoryAllocator)
 
+
+
+include(FetchContent)
+FetchContent_Declare(
+        fastgltf
+        GIT_REPOSITORY https://github.com/spnda/fastgltf
+        GIT_TAG        main
+)
+FetchContent_MakeAvailable(fastgltf)
+
+target_link_libraries(vulkan_pathtracer PRIVATE fastgltf)
+
+
 file(COPY resources DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

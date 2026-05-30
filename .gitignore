@@ -9,7 +9,8 @@ CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
 Makefile
-
+cmake-build-release/
+cmake-build-debug/
 # Visual Studio
 .vs/
 *.vcxproj
