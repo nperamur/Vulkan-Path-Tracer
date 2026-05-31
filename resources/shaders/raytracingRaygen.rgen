@@ -41,26 +41,35 @@ layout(buffer_reference, std430) buffer NormalBuffer {
     float data[];
 };
 
-float hash(vec2 uv, uint seed) {
-    uint x = floatBitsToUint(uv.x);
-    uint y = floatBitsToUint(uv.y);
+uint nextRand(inout uint randState) {
+    randState ^= randState << 13;
+    randState ^= randState >> 17;
+    randState ^= randState << 5;
+    return randState;
+}
 
-    uint h = x ^ (y + 0x9e3779b9U + (x << 6) + (x >> 2)) ^ seed;
+float randFloat(inout uint randState) {
+    return float(nextRand(randState) & 0x007fffffU) / float(0x00800000U);
+}
+
+vec2 randFloat2(inout uint randState) {
+    float r1 = randFloat(randState);
+    float r2 = randFloat(randState);
+    return vec2(r1, r2);
+}
+
+uint initRandState(ivec2 pixelCoords, uint frameCount) {
+    uint x = uint(pixelCoords.x);
+    uint y = uint(pixelCoords.y);
+    uint h = x ^ (y * 0x9e3779b9U) ^ (frameCount * 0x85ebca6bU);
     h ^= h >> 16;
     h *= 0x7feb352dU;
     h ^= h >> 15;
     h *= 0x846ca68bU;
     h ^= h >> 16;
-
-    return float(h & 0x007fffffU) / float(0x00800000U);
+    if (h == 0u) h = 1u;
+    return h;
 }
-
-vec2 getRand2(vec2 uv, uint frameCount) {
-    float r1 = hash(uv, frameCount);
-    float r2 = hash(uv, frameCount + 1234567u);
-    return vec2(r1, r2);
-}
-
 
 
 struct Material {
@@ -219,9 +228,9 @@ float getFresnelValue(Material material, vec3 normal, vec3 incomingLight) {
     return fresnelValue;
 }
 
-bool isDiffuseBounce(vec2 uv, uint frameCount, vec3 microfacetNormal, vec3 incomingLight, Material material) {
+bool isDiffuseBounce(inout uint randState, vec3 microfacetNormal, vec3 incomingLight, Material material) {
     float fresnelValue = mix(getFresnelValue(material, microfacetNormal, incomingLight), 1.0, material.metalness);
-    float rand = hash(uv, uint(frameCount) + 9827341u);
+    float rand = randFloat(randState);
     return (rand >= fresnelValue);
 }
 
@@ -258,22 +267,20 @@ void processBounce(
     vec3 normal,
     Material material,
     vec3 prevRayDir,
-    vec2 uv,
-    uint seed,
-    uint seed2,
+    inout uint randState,
     bool shadowMiss,
     inout vec3 throughput,
     inout vec3 accumulatedLight,
     inout vec3 rayDir
 ) {
-    vec3 microfacetNormal = SampleVndf_GGX(getRand2(uv, seed2), -prevRayDir, pow(material.roughness, 2), normal);
-    bool diffuseBounce = isDiffuseBounce(uv, seed, microfacetNormal, -prevRayDir, material);
+    vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, pow(material.roughness, 2), normal);
+    bool diffuseBounce = isDiffuseBounce(randState, microfacetNormal, -prevRayDir, material);
 
     vec3 directBRDF = vec3(0.0);
     vec3 directLight = vec3(0.0);
 
     if (diffuseBounce) {
-        rayDir = normalize(getRandomDiffuseRayDir(getRand2(uv, seed), normal));
+        rayDir = normalize(getRandomDiffuseRayDir(randFloat2(randState), normal));
     } else {
         vec3 reflected = reflect(prevRayDir, microfacetNormal);
         float lenSq = dot(reflected, reflected);
@@ -307,8 +314,6 @@ void processBounce(
                       * max(dot(normal, rayDir), 0.0))
                       / fullPdf;
     }
-
-
 }
 
 vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2, vec3 rayDir) {
@@ -358,11 +363,14 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
          vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
          vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
          vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
-         vec2 uv = vec2(gl_LaunchIDEXT.xy + 0.5) / vec2(gl_LaunchSizeEXT.xy);
-         vec2 ndc = uv * 2.0 - 1.0;
-         vec4 rayClip = vec4(ndc, 1.0, 1.0);
-         vec4 rayDirWorld = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * rayClip);
-         vec3 rayDir = normalize(rayDirWorld.xyz / rayDirWorld.w - cameraPosition);
+        uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
+
+        vec2 jitter = randFloat2(randState);
+        vec2 uv = vec2(gl_LaunchIDEXT.xy + jitter) / vec2(gl_LaunchSizeEXT.xy);
+        vec2 ndc = uv * 2.0 - 1.0;
+        vec4 rayClip = vec4(ndc, 1.0, 1.0);
+        vec4 rayDirWorld = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * rayClip);
+        vec3 rayDir = normalize(rayDirWorld.xyz / rayDirWorld.w - cameraPosition);
 
          vec3 normal = normalize(cross(v1 - v0, v2 - v0));
          if (dot(normal, -rayDir) < 0.0) normal = -normal;
@@ -395,9 +403,7 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
              vec3 n2 = normalize(mat3(material.modelMatrix) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
              normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
          }
-         processBounce(normal, material, prevRayDir, uv,
-                         pushConstants.frameCount + uint(n * 97),
-                         pushConstants.frameCount + uint(n * 181),
+         processBounce(normal, material, prevRayDir, randState,
                          rayPayload.distance < 0,
                          throughput, accumulatedLight, rayDir);
 
@@ -456,9 +462,7 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
                  0
              );
 
-             processBounce(normal, material, prevRayDir, uv,
-                 pushConstants.frameCount + uint(i * 13) + uint(n * 97),
-                 pushConstants.frameCount + uint(i * 97) + uint(n * 181),
+             processBounce(normal, material, prevRayDir, randState,
                  rayPayload.distance < 0,
                  throughput, accumulatedLight, rayDir);
          }
