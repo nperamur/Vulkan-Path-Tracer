@@ -290,7 +290,7 @@ void processBounce(
     vec3 directMicrofacetNormal = normalize(-prevRayDir + normalize(lightData.position.xyz));
     vec3 f0 = mix(vec3(material.reflectivity), material.color.rgb, material.metalness);
     directBRDF = getSpecularBRDF(material, normal, directMicrofacetNormal, -prevRayDir, normalize(lightData.position.xyz)) +
-                    getDiffuseBRDF(material) * (1.0 - material.metalness);
+                    getDiffuseBRDF(material) * (1.0 - fresnelSchlick(directMicrofacetNormal, -prevRayDir, f0));
     if (shadowMiss) {
         directLight = directBRDF * max(0, dot(normal, normalize(lightData.position.xyz))) * lightIntensity * lightData.color.rgb;
     }
@@ -306,7 +306,7 @@ void processBounce(
 
     if (diffuseBounce) {
         throughput *= getDiffuseBRDF(material)
-                      * (1.0 - material.metalness)
+                      * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
                       * max(dot(normal, rayDir), 0.0)
                       / fullPdf;
     } else {
