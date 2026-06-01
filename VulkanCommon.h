@@ -53,6 +53,10 @@ namespace CombineShaderSlots {
 
 }
 
+namespace ToneMappingShaderSlots {
+    inline constexpr DescriptorBinding baseImage = {.set = 0,.binding = 0};
+}
+
 
 
 class VulkanCommon {

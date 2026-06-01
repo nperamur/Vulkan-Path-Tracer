@@ -72,6 +72,14 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
                                     std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, combineShadersDescriptorsInfo, 1));
 
+    DescriptorsInfo toneMappingDescriptorsInfo = {
+        .staticData = {.numUBOs = 0, .numTextureSamplers = 1},
+        .dynamicData = {.numUBOs = 0, .numTextureSamplers = 0}
+    };
+
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::toneMapping, device,
+                                    std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, toneMappingDescriptorsInfo, 1));
+
 
 
     int width, height;
@@ -95,10 +103,12 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
     ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::triangle).get());
     ShaderPair* combineShaders = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::combineShader).get());
+    ShaderPair* toneMappingShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::toneMapping).get());
+
 
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
-    resizeImageViews(combineShaders, rtShaderPipeline, depthImageView, width, height, frameIndex);
+    resizeImageViews(combineShaders, toneMappingShader, rtShaderPipeline, depthImageView, width, height, frameIndex);
 
 
     Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
@@ -216,18 +226,27 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     };
     renderGraph.addPass(copyToHistory);
 
-
-    RenderPass copyToSwapchain = {
-        .renderStage = RenderStage::copy,
+    RenderPass toneMappingPass = {
+        .renderStage = RenderStage::postProcessing,
         .reads = { blendOutputRenderPassImage},
         .writes = { swapChainRenderPassImage},
-        .bindPipeline = [&](){},
-        .toPresent = true,
-        .width  = static_cast<uint32_t>(width),
-        .height = static_cast<uint32_t>(height),
-
+        .bindPipeline = [&]() { toneMappingShader -> bind(commandBuffer, frameIndex); },
+        .toPresent = true
     };
-    renderGraph.addPass(copyToSwapchain);
+    renderGraph.addPass(toneMappingPass);
+
+
+    // RenderPass copyToSwapchain = {
+    //     .renderStage = RenderStage::copy,
+    //     .reads = { blendOutputRenderPassImage},
+    //     .writes = { swapChainRenderPassImage},
+    //     .bindPipeline = [&](){},
+    //     .toPresent = true,
+    //     .width  = static_cast<uint32_t>(width),
+    //     .height = static_cast<uint32_t>(height),
+    //
+    // };
+    // renderGraph.addPass(copyToSwapchain);
 
 
     renderGraph.execute(commandBuffer, *barrierManager, *sceneManager, screenQuad, &*depthImageView, swapChainImageView, *swapChainExtent);
@@ -271,7 +290,7 @@ void Renderer::traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport vi
                                 *rtShaderPipeline -> getRegion(RaytracingRegion::callable), width, height, depth);
 }
 
-void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex) {
+void Renderer::resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMappingShader, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex) {
     if (numFramesSinceResize == 0) {
         device->waitIdle();
         Application::get() -> resetAllCommandBuffers();
@@ -304,6 +323,10 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipe
 
         TextureView* historyBufferTextureView = this->imageViewManager->getTextureView(RenderPassImages::historyBuffer, frameIndex);
         combineShaders -> setTextureSampler(CombineShaderSlots::historyBuffer, *historyBufferTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
+
+
+        TextureView* toneMappingTextureView = this->imageViewManager->getTextureView(RenderPassImages::blendOutput, frameIndex);
+        toneMappingShader -> setTextureSampler(ToneMappingShaderSlots::baseImage, *toneMappingTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
     }
     numFramesSinceResize++;

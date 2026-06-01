@@ -24,6 +24,7 @@ namespace Shaders {
     ID(triangle, "triangle")
     ID(raytracing, "raytracing")
     ID(combineShader, "combineShader")
+    ID(toneMapping, "tonemapping")
 }
 
 namespace StorageImages {
@@ -103,7 +104,7 @@ class Renderer {
 
 private:
     void renderModel(vk::raii::CommandBuffer &commandBuffer, Model &model, int instanceIndex, vk::Viewport viewport, vk::Rect2D rect2D);
-    void resizeImageViews(ShaderPair* combineShaders, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
+    void resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMappingShader, RaytracingShaderPipeline* rtShaderPipeline, vk::raii::ImageView& depthImageView, int width, int height, int frameIndex);
     glm::mat4 createProjectionMatrix();
     void traceRays(vk::raii::CommandBuffer &commandBuffer, vk::Viewport viewport, vk::Rect2D rect2D, int width, int height, int depth);
     void initScreenQuad(vk::raii::PhysicalDevice& physicalDevice);
