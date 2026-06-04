@@ -70,7 +70,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         .dynamicData = {.numUBOs = 1, .numTextureSamplers = 0}
     };
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::combineShader, device,
-                                    std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, combineShadersDescriptorsInfo, 1));
+                                    std::vector<vk::Format>{vk::Format::eR32G32B32A32Sfloat}, *allocator, combineShadersDescriptorsInfo, 1));
 
     DescriptorsInfo toneMappingDescriptorsInfo = {
         .staticData = {.numUBOs = 0, .numTextureSamplers = 1},
@@ -78,15 +78,15 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     };
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::toneMapping, device,
-                                    std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32Uint}, *allocator, toneMappingDescriptorsInfo, 1));
+                                    std::vector<vk::Format>{vk::Format::eB8G8R8A8Srgb}, *allocator, toneMappingDescriptorsInfo, 1));
 
 
 
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_B8G8R8A8_SRGB, width, height);
+    imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
 

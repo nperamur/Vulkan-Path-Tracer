@@ -50,7 +50,7 @@ class AccelerationStructureManager {
 
     void cleanUp();
 
-    void build(std::vector<Entity>& entities, MVP& mvp);
+    void build(std::vector<Entity*> entities, MVP& mvp);
 
     private:
 
@@ -67,8 +67,8 @@ class AccelerationStructureManager {
 
     void buildTLAS(vk::raii::CommandBuffer& commandBuffer, std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> *buildInfos, std::vector<vk::AccelerationStructureBuildRangeInfoKHR>& rangeInfos);
 
-    void buildTLASGeometry(std::vector<AccelerationStructureData> &blasData, std::vector<Entity> &entities, MVP *mvp);
-    void buildBLASGeometry(std::vector<Entity>& entities);
+    void buildTLASGeometry(std::vector<AccelerationStructureData> &blasData, std::vector<Entity*> entities, MVP *mvp);
+    void buildBLASGeometry(std::vector<Entity*> entities);
 };
 
 

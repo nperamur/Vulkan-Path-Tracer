@@ -58,8 +58,11 @@ add_executable(vulkan_pathtracer Application.cpp Application.h
         rendering/RenderGraph.cpp
         rendering/RenderGraph.h
         ModelLoader.cpp
+        GLTFLoader.cpp
+        GLTFLoader.h
 )
 target_link_libraries(vulkan_pathtracer PRIVATE glfw glm)
+target_compile_definitions(vulkan_pathtracer PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 option(FORCE_VOLK "Force volk even if Vulkan SDK is found" OFF)
 if (NOT FORCE_VOLK)
@@ -147,10 +150,11 @@ include(FetchContent)
 FetchContent_Declare(
         fastgltf
         GIT_REPOSITORY https://github.com/spnda/fastgltf
-        GIT_TAG        main
+        GIT_TAG        v0.9.0
 )
-FetchContent_MakeAvailable(fastgltf)
 
+FetchContent_MakeAvailable(fastgltf)
+set(FASTGLTF_DISABLE_CUSTOM_MEMORY_POOL OFF)
 target_link_libraries(vulkan_pathtracer PRIVATE fastgltf)
 
 

@@ -1,6 +1,7 @@
 
 #include "SceneManager.h"
 
+#include "../GLTFLoader.h"
 #include "../ModelLoader.h"
 #include "../VulkanCommon.h"
 #include "GLFW/glfw3.h"
@@ -63,6 +64,11 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
         -1.0f,  1.0f, 0.0f
     };
 
+    std::vector<uint32_t> indices = {
+        0, 1, 2, 0, 2, 3,
+        4, 6, 5, 4, 7, 6
+    };
+
     std::vector<float> quadNormals = {
         0.0f, 0.0f, 1.0f,
         0.0f, 0.0f, 1.0f,
@@ -74,34 +80,29 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
         0.0f, 0.0f, -1.0f
     };
 
-    std::vector<uint32_t> indices = {
-        0, 1, 2, 0, 2, 3,
-        4, 6, 5, 4, 7, 6
-    };
-
     auto floorModel = loader.load(quadVertices, indices, quadNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("floor", std::move(floorModel), white, mvp.transformation);
-    entities.back().setRotation(glm::vec3(-90.0f, 0.0f, 0.0f));
-    entities.back().setPosition(glm::vec3(0.0f, -1.0f, 0.0f));
+    entities.emplace_back(Entity("floor", std::move(floorModel), white, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(-90.0f, 0.0f, 0.0f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(0.0f, -1.0f, 0.0f));
 
     auto ceilingModel = loader.load(quadVertices, indices, quadNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("ceiling", std::move(ceilingModel), light, mvp.transformation);
-    entities.back().setRotation(glm::vec3(90.0f, 0.0f, 0.0f));
-    entities.back().setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
+    entities.emplace_back(Entity("ceiling", std::move(ceilingModel), light, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(90.0f, 0.0f, 0.0f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
 
     auto backModel = loader.load(quadVertices, indices, quadNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("back", std::move(backModel), white, mvp.transformation);
-    entities.back().setPosition(glm::vec3(0.0f, 0.0f, -1.0f));
+    entities.emplace_back(Entity("back", std::move(backModel), white, mvp.transformation));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(0.0f, 0.0f, -1.0f));
 
     auto leftModel = loader.load(quadVertices, indices, quadNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("left", std::move(leftModel), red, mvp.transformation);
-    entities.back().setRotation(glm::vec3(0.0f, 90.0f, 0.0f));
-    entities.back().setPosition(glm::vec3(-1.0f, 0.0f, 0.0f));
+    entities.emplace_back(Entity("left", std::move(leftModel), red, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(0.0f, 90.0f, 0.0f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(-1.0f, 0.0f, 0.0f));
 
     auto rightModel = loader.load(quadVertices, indices, quadNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("right", std::move(rightModel), green, mvp.transformation);
-    entities.back().setRotation(glm::vec3(0.0f, -90.0f, 0.0f));
-    entities.back().setPosition(glm::vec3(1.0f, 0.0f, 0.0f));
+    entities.emplace_back(Entity("right", std::move(rightModel), green, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(0.0f, -90.0f, 0.0f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(1.0f, 0.0f, 0.0f));
 
     std::vector<float> visibleCeilingVertices = {
         -1.0f,  1.001f,  1.0f,
@@ -123,12 +124,12 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     };
 
     auto visibleCeilingModel = loader.load(visibleCeilingVertices, visibleCeilingIndices, visibleCeilingNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("ceiling_vis", std::move(visibleCeilingModel), white, mvp.transformation);
+    entities.emplace_back(Entity("ceiling_vis", std::move(visibleCeilingModel), white, mvp.transformation));
 
     auto teapot = modelLoader.load("utah_teapot", loader, device, physicalDevice);
-    entities.emplace_back("teapot", std::move(teapot), gray, mvp.transformation);
-    entities.back().setRotation(glm::vec3(0.0f, 0, 0.0f));
-    entities.back().setScale(glm::vec3(0.1f));
+    entities.emplace_back(Entity("teapot", std::move(teapot), gray, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(0.0f, 0, 0.0f));
+    std::get<Entity>(entities.back()).setScale(glm::vec3(0.1f));
 
     std::vector<float> cubeVertices = {
         -0.5f,-0.5f, 0.5f,
@@ -173,14 +174,14 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
         1,0,0,  1,0,0,  1,0,0,  1,0,0,
         0,1,0,  0,1,0,  0,1,0,  0,1,0,
         0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0
-   };
+    };
 
     auto cube = loader.load(cubeVertices, cubeIndices, cubeNormals, std::nullopt, device, physicalDevice);
     Material matteBlue = { .color = glm::vec4(0.2f, 0.3f, 0.9f, 1.0f), .roughness = 0.85f, .metalness = 0.0f, .reflectivity = 0.1f };
-    entities.emplace_back("cube_test", std::move(cube), matteBlue, mvp.transformation);
-    entities.back().setRotation(glm::vec3(0.0f, -15, 0.0f));
-    entities.back().setScale(glm::vec3(0.3f));
-    entities.back().setPosition(glm::vec3(0.4f, -0.7f, 0.2f));
+    entities.emplace_back(Entity("cube_test", std::move(cube), matteBlue, mvp.transformation));
+    std::get<Entity>(entities.back()).setRotation(glm::vec3(0.0f, -15, 0.0f));
+    std::get<Entity>(entities.back()).setScale(glm::vec3(0.3f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(0.4f, -0.7f, 0.2f));
 
     std::vector<float> sphereVertices;
     std::vector<float> sphereNormals;
@@ -217,11 +218,9 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
             uint32_t first  = (r * (segments + 1)) + s;
             uint32_t second = first + segments + 1;
 
-
             sphereIndices.push_back(first);
             sphereIndices.push_back(first + 1);
             sphereIndices.push_back(second);
-
 
             sphereIndices.push_back(first + 1);
             sphereIndices.push_back(second + 1);
@@ -231,39 +230,66 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
 
     Material shinySpecular = { .color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), .roughness = 0.2f, .metalness = 1.0f, .reflectivity = 0.8f };
     auto sphereModel = loader.load(sphereVertices, sphereIndices, sphereNormals, std::nullopt, device, physicalDevice);
-    entities.emplace_back("stress_sphere", std::move(sphereModel), shinySpecular, mvp.transformation);
-    entities.back().setScale(glm::vec3(0.25f));
-    entities.back().setPosition(glm::vec3(-0.4f, -0.7f, 0.1f));
+    entities.emplace_back(Entity("stress_sphere", std::move(sphereModel), shinySpecular, mvp.transformation));
+    std::get<Entity>(entities.back()).setScale(glm::vec3(0.25f));
+    std::get<Entity>(entities.back()).setPosition(glm::vec3(-0.4f, -0.7f, 0.1f));
 
-    for (Entity& entity : entities) {
-        entity.setIndexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity.getModel().indexBuffer}));
-        entity.setVertexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity.getModel().vertexBuffer}));
-        entity.setNormalAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity.getModel().normalBuffer}));
-        entity.updateTransformationMatrix();
+    for (Entity* entity : getEntities()) {
+        entity->setIndexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity->getModel().indexBuffer}));
+        entity->setVertexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity->getModel().vertexBuffer}));
+        entity->setNormalAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity->getModel().normalBuffer}));
+        entity->updateTransformationMatrix();
     }
-
-
 }
+// SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp) {
+//
+//     GLTFLoader gltfLoader;
+//
+//     // WorldObject sponza;
+//     // sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 2.5f));
+//     // sponza.setScale(glm::vec3(4.0f));
+//     // sponza.setPosition(glm::vec3(10, 0, 0));
+//     // entities.push_back(std::move(sponza));
+//
+//     WorldObject cornellBox;
+//     cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f));
+//     cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+//     cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
+//     entities.push_back(std::move(cornellBox));
+//
+//     for (Entity* entity : getEntities()) {
+//         entity -> setIndexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}));
+//         entity -> setVertexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().vertexBuffer}));
+//         entity -> setNormalAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().normalBuffer}));
+//         entity -> updateTransformationMatrix();
+//     }
+// }
+
 
 void SceneManager::updateAndDrawEntities(std::function<void()> updateTransform, std::function<void(Entity&)> draw) {
     float time = glfwGetTime();
-    for (Entity& entity : entities) {
-        if (entity.getIdentifier() == "triangle") {
-            entity.setRotation(glm::vec3(0.0f, time, 0.0f));
-        } else if (entity.getIdentifier() == "sponza") {
-            entity.setScale(glm::vec3(0.02, 0.02, 0.02));
+    // for (auto& variantEntity : entities) {
+    //     if (auto* o = std::get_if<WorldObject>(&variantEntity)) {
+    //
+    //     }
+    // }
+    for (Entity* entity : getEntities()) {
+        if (entity -> getIdentifier() == "triangle") {
+            entity -> setRotation(glm::vec3(0.0f, time, 0.0f));
+        } else if (entity -> getIdentifier() == "sponza") {
+            entity -> setScale(glm::vec3(0.02, 0.02, 0.02));
         }
-        entity.updateTransformationMatrix();
+        entity -> updateTransformationMatrix();
         updateTransform();
-        draw(entity);
+        draw(*entity);
     }
 }
 
 std::vector<Material> SceneManager::getAllMaterials() {
     std::vector<Material> materials;
-    for (Entity& entity : entities) {
-        if (entity.hasMaterial()) {
-            materials.push_back(entity.getMaterial());
+    for (Entity* entity : getEntities()) {
+        if (entity -> hasMaterial()) {
+            materials.push_back(entity -> getMaterial());
         }
     }
     return materials;

@@ -6,7 +6,7 @@
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
 layout(set = 0, binding = 2) uniform sampler2D visibilityBuffer;
-layout(set = 0, binding = 4, rgba16f) uniform image2D storageImage;
+layout(set = 0, binding = 4, rgba32f) uniform image2D storageImage;
 layout(set = 0, binding = 3) uniform sampler2D normalBuffer;
 struct RayPayload {
     vec3 normal;
@@ -260,7 +260,7 @@ float getGGX_VNDF_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir)
 const int NUM_SAMPLES_PER_PIXEL = 1;
 const bool INTERPOLATED_NORMALS = false;
 const int NUM_MAX_BOUNCES = 4;
-const float lightIntensity = 10;
+const float lightIntensity = 15;
 const vec3 skyColor = vec3(0.4, 0.45, 0.9);
 
 void processBounce(
@@ -364,7 +364,7 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
          vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
          vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
          vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
-        uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
+         uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
 
         vec2 jitter = randFloat2(randState);
         vec2 uv = vec2(gl_LaunchIDEXT.xy + jitter) / vec2(gl_LaunchSizeEXT.xy);

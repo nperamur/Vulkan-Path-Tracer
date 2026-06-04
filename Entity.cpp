@@ -5,7 +5,8 @@
 #include <utility>
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_transform.hpp"
-
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 Entity::Entity(std::string identifier, Model&& model, glm::mat4& transform) : transform(transform), model(std::move(model)) {
     this->identifier = std::move(identifier);
@@ -23,8 +24,8 @@ void Entity::updateTransformationMatrix() {
     transformation = glm::rotate(transformation, glm::radians(rotation.x), glm::vec3(1, 0, 0));
     transformation = glm::rotate(transformation, glm::radians(rotation.y), glm::vec3(0, 1, 0));
     transformation = glm::rotate(transformation, glm::radians(rotation.z), glm::vec3(0, 0, 1));
-    this -> transform = transformation;
-    this -> material -> modelMatrix = glm::mat4(transformation);
+    this -> transform = parentTransform * transformation;
+    this -> material -> modelMatrix = parentTransform * transformation;
 }
 
 void Entity::increasePosition(glm::vec3 v) {
@@ -39,7 +40,9 @@ void Entity::increaseScale(glm::vec3 v) {
     scale += v;
 }
 
-
+void Entity::setParentTransform(glm::mat4& parentTransformation) {
+    this -> parentTransform = parentTransformation;
+}
 
 
 bool Entity::hasMaterial() {
@@ -74,6 +77,25 @@ std::string Entity::getIdentifier() {
     return identifier;
 }
 
+
+void Entity::setTransform(const glm::mat4& matrix)
+{
+    glm::vec3 skew;
+    glm::vec4 perspective;
+    glm::quat orientation;
+
+    glm::decompose(
+        matrix,
+        scale,
+        orientation,
+        position,
+        skew,
+        perspective
+    );
+
+    rotation = glm::eulerAngles(orientation);
+
+}
 
 
 

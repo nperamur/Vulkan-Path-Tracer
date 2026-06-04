@@ -77,7 +77,7 @@ void AccelerationStructureManager::createScratchBuffers(
 /**
  * Given the entities, this method builds the acceleration structure used for ray-tracing
  */
-void AccelerationStructureManager::build(std::vector<Entity> &entities, MVP& mvp) {
+void AccelerationStructureManager::build(std::vector<Entity*> entities, MVP& mvp) {
     buildBLASGeometry(entities);
     vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
     vk::raii::CommandPool commandPool(*device, poolInfo);
@@ -297,24 +297,24 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
  * Builds the geometry of the Top-Level acceleration structure. In doing so, we create a instance buffer to
  * retrieve the geometry and update the Geometry struct accordingly.
  */
-void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity>& entities, MVP* mvp) {
+void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStructureData>& blasData, std::vector<Entity*> entities, MVP* mvp) {
     std::vector<vk::AccelerationStructureInstanceKHR> instances;
     int i = 0;
     int materialIndex = 0;
-    for (Entity &entity : entities) {
-        entity.updateTransformationMatrix();
+    for (Entity* entity : entities) {
+        entity -> updateTransformationMatrix();
         glm::mat4 transposed = glm::transpose(mvp -> transformation);
         vk::TransformMatrixKHR transformMatrix;
         memcpy(&transformMatrix, &transposed, sizeof(vk::TransformMatrixKHR));
         vk::AccelerationStructureInstanceKHR asInstance(
             transformMatrix,
-            (entity.hasMaterial()) ? materialIndex : 0,
+            (entity -> hasMaterial()) ? materialIndex : 0,
             0xFF,
-            (entity.hasMaterial()) ? (materialIndex) : 0,
+            (entity -> hasMaterial()) ? (materialIndex) : 0,
             vk::GeometryInstanceFlagBitsKHR::eTriangleFrontCounterclockwise,
             blasData[i].deviceAddress
         );
-        if (entity.hasMaterial()) {
+        if (entity -> hasMaterial()) {
             materialIndex++;
         }
         instances.push_back(asInstance);
@@ -365,17 +365,17 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
  * Builds the geometry of the Bottom-Level acceleration structure. In doing so, we upload our vertex & index buffer addresses
  * and update our Blas Geometry.
  */
-void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity>& entities) {
+void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity*> entities) {
     geometry.tlasGeometry.primitiveCount = entities.size();
 
     int i = 0;
-    for (Entity& entity : entities) {
+    for (Entity* entity : entities) {
         vk::BufferDeviceAddressInfo vertexBufferDeviceAddressInfo(
-            *entity.getModel().vertexBuffer
+            *entity -> getModel().vertexBuffer
         );
         vk::DeviceAddress vertexAddress = device -> getBufferAddress(vertexBufferDeviceAddressInfo);
         vk::BufferDeviceAddressInfo indexBufferDeviceAddressInfo(
-            *entity.getModel().indexBuffer
+            *entity -> getModel().indexBuffer
         );
         vk::DeviceAddress indexAddress = device -> getBufferAddress(indexBufferDeviceAddressInfo);
 
@@ -385,7 +385,7 @@ void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity>& entiti
             vk::Format::eR32G32B32Sfloat,
             vertexData,
             sizeof(float) * 3,
-            entity.getModel().numVertices - 1,
+            entity -> getModel().numVertices - 1,
             vk::IndexType::eUint32,
             indexData,
             {}
@@ -400,7 +400,7 @@ void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity>& entiti
         );
 
 
-        GeometryData geometryData = {.geometry = triangleGeometry, .primitiveCount = (uint32_t)(entity.getModel().numIndices / 3)};
+        GeometryData geometryData = {.geometry = triangleGeometry, .primitiveCount = (uint32_t)(entity -> getModel().numIndices / 3)};
         geometry.blasGeometry.push_back(geometryData);
 
     }

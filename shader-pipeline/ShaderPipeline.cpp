@@ -120,7 +120,7 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    imageInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
     imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
     imageInfo.mipLevels = 1;
     imageInfo.arrayLayers = 1;
@@ -146,7 +146,7 @@ void ShaderPipeline::setStorageImage(DescriptorBinding descriptorBinding, int wi
     vk::ImageViewCreateInfo viewInfo{};
     viewInfo.image = image.image;
     viewInfo.viewType = vk::ImageViewType::e2D;
-    viewInfo.format = vk::Format::eR16G16B16A16Sfloat;
+    viewInfo.format = vk::Format::eR32G32B32A32Sfloat;
     viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;

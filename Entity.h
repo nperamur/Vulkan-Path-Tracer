@@ -14,9 +14,9 @@ struct alignas(16) Material {
     uint64_t vertexAddress;
     uint64_t indexAddress;
     uint64_t normalAddress;
-    float roughness;
-    float metalness;
-    float reflectivity;
+    float roughness = 1.0f;
+    float metalness = 0.0f;
+    float reflectivity = 0.0f;
 };
 
 class Entity {
@@ -28,6 +28,7 @@ class Entity {
     glm::vec3 rotation = glm::vec3(0, 0, 0);
     glm::vec3 scale = glm::vec3(1.0f, 1.0f, 1.0f);
     glm::mat4& transform;
+    glm::mat4 parentTransform = glm::mat4(1.0);
 
     public:
         Entity(std::string identifier, Model&& model, glm::mat4& transform);
@@ -71,8 +72,11 @@ class Entity {
         void increaseRotation(glm::vec3 v);
         void increaseScale(glm::vec3 v);
 
+        void setParentTransform(glm::mat4& parentTransform);
+
 
         bool hasMaterial();
+        void setTransform(const glm::mat4& matrix);
 
 
 };
