@@ -2,6 +2,8 @@
 
 #ifndef VULKAN_TEST_ENTITY_H
 #define VULKAN_TEST_ENTITY_H
+#include <iostream>
+
 #include "Loader.h"
 #include "glm/fwd.hpp"
 #include "glm/vec3.hpp"
@@ -17,11 +19,15 @@ struct alignas(16) Material {
     float roughness = 1.0f;
     float metalness = 0.0f;
     float reflectivity = 0.0f;
+    int lightIndex = -1.0;
 };
 
 class Entity {
     Model model;
     std::optional<Material> material;
+    std::vector<float>* emissiveVertices;
+    int emissiveStride = -1;
+    int emissiveIndex = -1;
     std::string identifier;
 
     glm::vec3 position = glm::vec3(0, 0, 0);
@@ -45,6 +51,8 @@ class Entity {
             return rotation;
         }
 
+        bool isEmissive();
+
         void setRotation(const glm::vec3 &rotation) {
             this->rotation = rotation;
         }
@@ -53,8 +61,17 @@ class Entity {
             return scale;
         }
 
+        void updateEmissiveVertices();
+
         void setScale(const glm::vec3 &scale) {
             this->scale = scale;
+        }
+
+        void setEmission(std::vector<float>* vertices, int index, int stride) {
+            this -> emissiveVertices = vertices;
+            this -> emissiveIndex = index;
+            this -> emissiveStride = stride;
+
         }
 
         Material getMaterial();

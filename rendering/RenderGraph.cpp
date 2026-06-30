@@ -210,7 +210,7 @@ void RenderGraph::executeRenderPass(RenderPass &renderPass, vk::raii::CommandBuf
 void RenderGraph::resolveBarriers(RenderPass &renderPass, BarrierManager &barrierManager, vk::raii::CommandBuffer& commandBuffer) {
     barrierManager.begin();
     for (auto& image : renderPass.reads) {
-        std::visit([&barrierManager](auto& renderPassImage) {
+        std::visit([&barrierManager, renderPass](auto& renderPassImage) {
             uint32_t firstStage = 0;
             uint32_t secondStage = 0;
 
@@ -224,8 +224,13 @@ void RenderGraph::resolveBarriers(RenderPass &renderPass, BarrierManager &barrie
 
             }
             firstStage = renderPassImage.prevStage;
-            secondStage = renderPassImage.attachmentFormatType == AttachmentFormatType::color ? BarrierUsage::colorRead : BarrierUsage::depthRead;
 
+            if (renderPass.renderStage == RenderStage::raytracing || renderPass.renderStage == RenderStage::compute) {
+                secondStage = renderPassImage.attachmentFormatType == AttachmentFormatType::color ? color : depth;
+                secondStage |= read | sampler | getResourceStage(renderPass.renderStage);
+            } else {
+                secondStage = renderPassImage.attachmentFormatType == AttachmentFormatType::color ? BarrierUsage::colorRead : BarrierUsage::depthRead;
+            }
             barrierManager.transition(renderPassImage.imageResource.getImage(), firstStage, secondStage);
             renderPassImage.prevStage = secondStage;
         }, image.get());

@@ -7,7 +7,7 @@
 #include "VulkanCommon.h"
 
 std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii::Device &device,
-                                     vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier) {
+                                     vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
     std::string fullPathStr = "resources/GLTFModels/" + name + "/" + name + ".gltf";
     std::filesystem::path gltfPath(fullPathStr);
 
@@ -18,7 +18,12 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
     }
     fastgltf::Parser parser;
     auto asset = parser.loadGltf(mappedData.get(), gltfPath.parent_path(), fastgltf::Options::LoadExternalBuffers);
+    if (asset.error() != fastgltf::Error::None) {
+        std::string msg = std::string(fastgltf::getErrorMessage(asset.error()));
+        throw std::runtime_error("Cannot load gltf file: " + msg);
+    }
     fastgltf::Asset& gltf = asset.get();
+
 
     size_t activeSceneIdx = gltf.defaultScene.value_or(0);
 
@@ -29,7 +34,7 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
     std::vector<Entity> entities;
     glm::mat4 initialTransform = glm::mat4(1.0);
     fastgltf::pmr::MaybeSmallVector<unsigned long long> nodeIndices(scene.nodeIndices.begin(), scene.nodeIndices.end());
-    processNodes(gltf, entities, nodeIndices, initialTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier);
+    processNodes(gltf, entities, nodeIndices, initialTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, emissiveVertices, lightData);
 
 
     return entities;
@@ -48,7 +53,7 @@ void GLTFLoader::processNodes(
     Loader &loader,
     vk::raii::Device &device,
     vk::raii::PhysicalDevice &physicalDevice,
-    MVP& mvp, float albedoMultiplier) {
+    MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
     for (long nodeIndex : nodeIndices) {
         const fastgltf::Node& node = gltf.nodes[nodeIndex];
 
@@ -62,7 +67,7 @@ void GLTFLoader::processNodes(
         fastgltf::math::fmat4x4 fastMat = fastgltf::getTransformMatrix(node);
         glm::mat4 nodeTransform = glm::make_mat4(fastMat.data());
         glm::mat4 totalTransform = parentTransform * nodeTransform;
-        processNodes(gltf, entities, node.children, totalTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier);
+        processNodes(gltf, entities, node.children, totalTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, emissiveVertices, lightData);
 
         if (node.meshIndex.has_value()) {
             const fastgltf::Mesh& mesh = gltf.meshes[node.meshIndex.value()];
@@ -80,6 +85,8 @@ void GLTFLoader::processNodes(
                 if (gltf.materials[materialIndex].specular) {
                     material.reflectivity = gltf.materials[materialIndex].specular->specularFactor;
                 }
+
+
                 //glm::vec3 specColorFactor = glm::make_vec3(gltf.materials[materialIndex].specular.get() -> specularColorFactor.data());
 
 
@@ -138,10 +145,39 @@ void GLTFLoader::processNodes(
                     device, physicalDevice
                 );
                 //TODO: Later, make a World Object Class that contains all these entities for better single transform stuff
+
+                bool isEmissive = (gltf.materials[materialIndex].emissiveFactor[0] > 0.0f ||
+                   gltf.materials[materialIndex].emissiveFactor[1] > 0.0f ||
+                   gltf.materials[materialIndex].emissiveFactor[2] > 0.0f);
+
+                if (isEmissive) {
+                    material.lightIndex = lightData.size();
+                }
                 Entity entity = Entity(primitiveName, std::move(model), material, mvp.transformation);
                 entity.setTransform(totalTransform);
-                entities.push_back(std::move(entity));
                 i++;
+
+                if (isEmissive) {
+                    LightData currLightData;
+                    currLightData.emissionFactor = glm::make_vec3(gltf.materials[materialIndex].emissiveFactor.data());
+                    currLightData.materialIndex = static_cast<int>(entities.size());
+                    currLightData.triangleCDFStartIndex = static_cast<int>(emissiveVertices.size() / 9);
+                    currLightData.triangleCDFStride = static_cast<int>(indices.size() / 3);
+                    currLightData.directionalPosition = glm::vec3(0.0f);
+                    entity.setEmission(&emissiveVertices, emissiveVertices.size(), indices.size() * 3);
+                    for (uint32_t index : indices) {
+                        emissiveVertices.push_back(flatPositions[index * 3]);
+                        emissiveVertices.push_back(flatPositions[index * 3 + 1]);
+                        emissiveVertices.push_back(flatPositions[index * 3 + 2]);
+                    }
+
+                    lightData.push_back(currLightData);
+
+                    //emissiveVertices.insert(emissiveVertices.end(), flatPositions.begin(), flatPositions.end());
+                }
+
+                entities.push_back(std::move(entity));
+
             }
         }
 

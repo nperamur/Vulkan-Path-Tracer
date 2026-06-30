@@ -28,6 +28,31 @@ void Entity::updateTransformationMatrix() {
     this -> material -> modelMatrix = parentTransform * transformation;
 }
 
+void Entity::updateEmissiveVertices() {
+    if (emissiveIndex >= 0 && emissiveStride > 0) {
+        for (int i = emissiveIndex; i < emissiveIndex + emissiveStride; i+=3) {
+
+            glm::vec4 vertex = glm::vec4((*emissiveVertices)[i],
+                                         (*emissiveVertices)[i + 1],
+                                         (*emissiveVertices)[i + 2],
+                                         1.0f);
+
+            glm::vec4 p = transform * vertex;
+
+            auto newVertex = glm::vec3(p);
+
+            (*emissiveVertices)[i] = newVertex.x;
+            (*emissiveVertices)[i + 1] = newVertex.y;
+            (*emissiveVertices)[i + 2] = newVertex.z;
+
+        }
+    }
+}
+
+bool Entity::isEmissive() {
+    return emissiveIndex >= 0;
+}
+
 void Entity::increasePosition(glm::vec3 v) {
     position += v;
 }

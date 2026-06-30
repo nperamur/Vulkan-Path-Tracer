@@ -49,7 +49,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     }
     //raytracing
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 2},
+        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5},
         .dynamicData = {.numUBOs = 2}
     };
     materials = sceneManager -> getAllMaterials();
@@ -60,9 +60,20 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::move(rtShaderPipeline));
     RaytracingShaderPipeline* rtShader = dynamic_cast<RaytracingShaderPipeline*> (this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::raytracing).get());
 
+    auto& triangleCDFBuffer = sceneManager ->getTriangleCDFBuffer();
+    auto& lightCDFBuffer = sceneManager -> getLightCDFBuffer();
+    auto& lightDataBuffer = sceneManager -> getLightData();
+    auto& emissiveVerticesBuffer = sceneManager -> getEmissiveVertices();
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         rtShader->setAccelerationStructure(RTShaderSlots::accelerationStructure, accelStructureManager -> getTLASData(), i);
         rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
+        if (!triangleCDFBuffer.empty()) {
+            rtShader->setStorageBuffer(RTShaderSlots::triangleCdfBuffer, triangleCDFBuffer.data(), triangleCDFBuffer.size() * sizeof(float), i);
+            rtShader->setStorageBuffer(RTShaderSlots::lightCdfBuffer, lightCDFBuffer.data(), lightCDFBuffer.size() * sizeof(float), i);
+            rtShader->setStorageBuffer(RTShaderSlots::lightDataBuffer, lightDataBuffer.data(), lightDataBuffer.size() * sizeof(LightData), i);
+            rtShader->setStorageBuffer(RTShaderSlots::emissiveVerticesBuffer, emissiveVerticesBuffer.data(), emissiveVerticesBuffer.size() * sizeof(float), i);
+        }
+
     }
 
     DescriptorsInfo combineShadersDescriptorsInfo = {

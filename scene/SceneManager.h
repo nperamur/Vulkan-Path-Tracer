@@ -9,8 +9,10 @@
 #include "glm/glm.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "../VulkanCommon.h"
 struct MVP;
 class Loader;
+
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
@@ -52,6 +54,10 @@ class SceneManager {
     //std::vector<Entity> entities;
 
     std::vector<std::variant<Entity, WorldObject>> entities;
+    std::vector<float> emissiveVertices;
+    std::vector<float> triangleCDFBuffer;
+    std::vector<float> lightCDFBuffer;
+    std::vector<LightData> lightData;
 
 
     public:
@@ -60,7 +66,7 @@ class SceneManager {
         void updateAndDrawEntities(std::function<void()> updateTransform,  std::function<void(Entity&)> draw);
 
         //Use as the source of truth. Do not store pointers or else I will get dangling pointer...
-    std::vector<Entity *> getEntities() {
+        std::vector<Entity *> getEntities() {
             std::vector<Entity*> finalEntities;
             for (std::variant<Entity, WorldObject>& entity : entities) {
                 std::visit(overloaded {
@@ -78,7 +84,21 @@ class SceneManager {
             return finalEntities;
         }
 
-    std::vector<Material> getAllMaterials();
+        std::vector<Material> getAllMaterials();
+
+        std::vector<float>& getTriangleCDFBuffer();
+
+        std::vector<float>& getLightCDFBuffer();
+
+        std::vector<float>& getEmissiveVertices();
+
+        std::vector<LightData>& getLightData();
+
+        private:
+        static void buildCDF(std::vector<float>& emissiveVertices, std::vector<float>& triangleCDFBuffer, std::vector<LightData>& lightData, std::vector<float>& lightCDFBuffer);
+        static float getTriangleSurfaceArea(std::array<glm::vec3, 3> vertices);
+
+
 };
 
 

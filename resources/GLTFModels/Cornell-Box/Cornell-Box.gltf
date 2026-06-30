@@ -415,6 +415,7 @@
     {
       "doubleSided": true,
       "name": "light",
+      "emissiveFactor": [1.0, 1.0, 1.0],
       "pbrMetallicRoughness": {
         "baseColorFactor": [
           0.78,

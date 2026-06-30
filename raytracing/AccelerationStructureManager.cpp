@@ -302,6 +302,12 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
     int i = 0;
     int materialIndex = 0;
     for (Entity* entity : entities) {
+        // if (entity -> isEmissive()) {
+        //     if (entity -> hasMaterial()) {
+        //         materialIndex++;
+        //     }
+        //     continue;
+        // }
         entity -> updateTransformationMatrix();
         glm::mat4 transposed = glm::transpose(mvp -> transformation);
         vk::TransformMatrixKHR transformMatrix;
@@ -366,10 +372,12 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
  * and update our Blas Geometry.
  */
 void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity*> entities) {
-    geometry.tlasGeometry.primitiveCount = entities.size();
 
     int i = 0;
     for (Entity* entity : entities) {
+        // if (entity -> isEmissive()) {
+        //     continue;
+        // }
         vk::BufferDeviceAddressInfo vertexBufferDeviceAddressInfo(
             *entity -> getModel().vertexBuffer
         );
@@ -402,8 +410,10 @@ void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity*> entiti
 
         GeometryData geometryData = {.geometry = triangleGeometry, .primitiveCount = (uint32_t)(entity -> getModel().numIndices / 3)};
         geometry.blasGeometry.push_back(geometryData);
-
+        i++;
     }
+
+    geometry.tlasGeometry.primitiveCount = i;
 
 }
 

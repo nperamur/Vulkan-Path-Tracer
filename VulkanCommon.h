@@ -19,6 +19,15 @@ struct MVP {
     glm::mat4 projection;
 };
 
+struct alignas(16) LightData {
+    glm::vec3 emissionFactor;
+    int triangleCDFStartIndex;
+    glm::vec3 directionalPosition;
+    int triangleCDFStride;
+    int materialIndex = -1; //use material index -1 for directional light
+    float lightArea = 0;
+};
+
 
 namespace Config {
     inline constexpr int maxFramesInFlight = 3;
@@ -34,6 +43,10 @@ namespace RTShaderSlots {
     inline constexpr DescriptorBinding depthBuffer = {.set = 0, .binding = 1};
     inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 4};
     inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 5};
+    inline constexpr DescriptorBinding triangleCdfBuffer = {.set = 0, .binding = 6};
+    inline constexpr DescriptorBinding lightCdfBuffer = {.set = 0, .binding = 7};
+    inline constexpr DescriptorBinding lightDataBuffer = {.set = 0, .binding = 8};
+    inline constexpr DescriptorBinding emissiveVerticesBuffer = {.set = 0, .binding = 9};
     inline constexpr DescriptorBinding visibilityBuffer = {.set = 0, .binding = 2};
     inline constexpr DescriptorBinding normalBuffer = {.set = 0, .binding = 3};
 }
