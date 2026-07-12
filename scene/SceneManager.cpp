@@ -340,6 +340,7 @@ void SceneManager::buildCDF(std::vector<float> &emissiveVertices, std::vector<fl
     int lightIndex = 0;
     int remainingStride = 0;
     std::optional<LightData> currLight = std::nullopt;
+    AABB currAABB = AABB{glm::vec3(std::numeric_limits<float>::infinity()), glm::vec3(-std::numeric_limits<float>::infinity())};
     if (!lightData.empty()) {
         currLight = lightData.at(0);
         remainingStride = currLight->triangleCDFStride;
@@ -351,12 +352,19 @@ void SceneManager::buildCDF(std::vector<float> &emissiveVertices, std::vector<fl
         triangleCDFBuffer.push_back(cdfWeight);
         prevWeight = cdfWeight;
 
+        currAABB.min = glm::min(glm::min(triangle[0], glm::min(triangle[1], triangle[2])), currAABB.min);
+        currAABB.max = glm::max(glm::max(triangle[0], glm::max(triangle[1], triangle[2])), currAABB.max);
+
+
         if (currLight != std::nullopt && i >= currLight->triangleCDFStartIndex) {
             currLightArea += area;
             remainingStride--;
             //handle next light
             if (remainingStride <= 0) {
                 lightData[lightIndex].lightArea = currLightArea;
+                lightData[lightIndex].position = (currAABB.max + currAABB.min) / 2.0f;
+                lightData[lightIndex].radius = glm::length(currAABB.max - currAABB.min) / 2.0f;
+                currAABB = AABB{glm::vec3(std::numeric_limits<float>::infinity()), glm::vec3(-std::numeric_limits<float>::infinity())};
                 lightIndex++;
                 currLight = std::nullopt;
                 float lightCDFWeight = prevLightWeight + currLightArea;
@@ -364,7 +372,7 @@ void SceneManager::buildCDF(std::vector<float> &emissiveVertices, std::vector<fl
                 prevLightWeight = lightCDFWeight;
                 currLightArea = 0;
                 if (lightIndex < lightData.size()) {
-                    currLight = lightData.at(lightIndex);
+                    currLight = lightData[lightIndex];
                     remainingStride = currLight->triangleCDFStride;
                 }
             }
@@ -391,5 +399,3 @@ float SceneManager::getTriangleSurfaceArea(std::array<glm::vec3, 3> vertices) {
     glm::vec3 crossProduct = glm::cross(AB, AC);
     return glm::length(crossProduct) / 2;
 }
-
-

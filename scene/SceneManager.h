@@ -98,7 +98,6 @@ class SceneManager {
         static void buildCDF(std::vector<float>& emissiveVertices, std::vector<float>& triangleCDFBuffer, std::vector<LightData>& lightData, std::vector<float>& lightCDFBuffer);
         static float getTriangleSurfaceArea(std::array<glm::vec3, 3> vertices);
 
-
 };
 
 

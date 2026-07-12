@@ -64,17 +64,27 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     auto& lightCDFBuffer = sceneManager -> getLightCDFBuffer();
     auto& lightDataBuffer = sceneManager -> getLightData();
     auto& emissiveVerticesBuffer = sceneManager -> getEmissiveVertices();
+
+    //Note to self: 12 bytes (padding) + 4 bytes = 16 bytes.
+    size_t lightBufferSize = 12 + sizeof(int) + lightDataBuffer.size() * sizeof(LightData);
+    void* lightBufferPointer = malloc(lightBufferSize);
+
+    int numLights = static_cast<int>(lightDataBuffer.size());
+    memcpy(lightBufferPointer, &numLights, sizeof(int));
+    void* lightDataBufferAddress = static_cast<char *>(lightBufferPointer) + sizeof(int) + 12;
+    memcpy(lightDataBufferAddress, lightDataBuffer.data(), lightDataBuffer.size() * sizeof(LightData));
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         rtShader->setAccelerationStructure(RTShaderSlots::accelerationStructure, accelStructureManager -> getTLASData(), i);
         rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
         if (!triangleCDFBuffer.empty()) {
             rtShader->setStorageBuffer(RTShaderSlots::triangleCdfBuffer, triangleCDFBuffer.data(), triangleCDFBuffer.size() * sizeof(float), i);
             rtShader->setStorageBuffer(RTShaderSlots::lightCdfBuffer, lightCDFBuffer.data(), lightCDFBuffer.size() * sizeof(float), i);
-            rtShader->setStorageBuffer(RTShaderSlots::lightDataBuffer, lightDataBuffer.data(), lightDataBuffer.size() * sizeof(LightData), i);
+            rtShader->setStorageBuffer(RTShaderSlots::lightDataBuffer, lightBufferPointer, lightBufferSize, i);
             rtShader->setStorageBuffer(RTShaderSlots::emissiveVerticesBuffer, emissiveVerticesBuffer.data(), emissiveVerticesBuffer.size() * sizeof(float), i);
         }
 
     }
+    free(lightBufferPointer);
 
     DescriptorsInfo combineShadersDescriptorsInfo = {
         .staticData = {.numUBOs = 0, .numTextureSamplers = 3},

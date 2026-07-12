@@ -163,7 +163,7 @@ void GLTFLoader::processNodes(
                     currLightData.materialIndex = static_cast<int>(entities.size());
                     currLightData.triangleCDFStartIndex = static_cast<int>(emissiveVertices.size() / 9);
                     currLightData.triangleCDFStride = static_cast<int>(indices.size() / 3);
-                    currLightData.directionalPosition = glm::vec3(0.0f);
+                    currLightData.position = glm::vec3(0.0f);
                     entity.setEmission(&emissiveVertices, emissiveVertices.size(), indices.size() * 3);
                     for (uint32_t index : indices) {
                         emissiveVertices.push_back(flatPositions[index * 3]);

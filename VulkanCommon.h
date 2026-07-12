@@ -22,12 +22,17 @@ struct MVP {
 struct alignas(16) LightData {
     glm::vec3 emissionFactor;
     int triangleCDFStartIndex;
-    glm::vec3 directionalPosition;
+    glm::vec3 position;
     int triangleCDFStride;
     int materialIndex = -1; //use material index -1 for directional light
     float lightArea = 0;
+    float radius = 0;
 };
 
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
 
 namespace Config {
     inline constexpr int maxFramesInFlight = 3;
