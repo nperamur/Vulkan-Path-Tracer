@@ -124,9 +124,12 @@ layout(set = 1, binding = 1) uniform InverseViewProj {
 layout(location = 0) rayPayloadEXT RayPayload rayPayload;
 
 const float PI = 3.14159265359;
-const float angularRadius = 0.00465;
+const float directionalLightAngularRadius = 0.00465;
 
-
+//TODO: give sun ratio relative to other weights
+const float SUN_ANGLE_WEIGHT_MULTIPLIER = 10000;
+const float SUN_WEIGHT_RATIO = 0.5f;
+const float SUN_RADIENCE = 3e3;
 
 //float u, float[] cdfBuffer int start, int end, int index, float pdf
 #define SAMPLE_CDF(u, cdfBuffer, start, end, index, pdf) { \
@@ -151,43 +154,83 @@ float sampleBoundingSphere(float boundingRadius, float distance) {
 }
 
 float calculateSolidAngleFromAngularRadius(float radius) {
-    float cosAlpha = cos(angularRadius);
+    float cosAlpha = cos(radius);
     float solidAngle = 2.0 * PI * (1.0 - cosAlpha);
     return solidAngle;
 }
-vec3 sampleLight(inout uint randState, inout Light light, vec3 surfacePos, inout float lightDirectionPDF, inout vec3 lightColor)  {
+
+vec3 sampleDirectionalLight(vec3 centerDir, float cosThetaMax, uint randState) {
+    float u1 = randFloat(randState);
+    float u2 = randFloat(randState);
+
+    float cosTheta = 1.0 - u1 * (1.0 - cosThetaMax);
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+    float phi = 2.0 * PI * u2;
+    vec3 localDir = vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+
+    vec3 up = abs(centerDir.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(up, centerDir));
+    vec3 bitangent = cross(centerDir, tangent);
+
+    return normalize(tangent * localDir.x + bitangent * localDir.y + centerDir * localDir.z);
+}
+
+
+
+vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirectionPDF, inout vec3 emissionColor, inout int materialIndex)  {
     float lightCDFRand = randFloat(randState);
+    bool includesDirectionalLight = length(lightData.color) > 0;
+
     int start = 0;
-    int end = lightCDF.data.length();
+    //int end = lightCDF.data.length();
     int lightIndex = 0;
     float lightSelectionPDF = 0;
 
-    float maxSolidAngle = 0;
-    for (int i = 0; i < lightDataBuffer.lightCount; i++) {
-        float dist = length(surfacePos - lightDataBuffer.data[i].position);
-        float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
-        maxSolidAngle = max(solidAngle, maxSolidAngle);
-    }
-
-    float lightSelectionCDFWeightCounter = 0;
-    float chosenSolidAngle = -1;
     float solidAngleSum = 0;
     for (int i = 0; i < lightDataBuffer.lightCount; i++) {
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
         float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
-        float cdfWeight = lightSelectionCDFWeightCounter + solidAngle / maxSolidAngle;
+        solidAngleSum += solidAngle;
+    }
+    float directionalLightSolidAngle = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius);
+    if (includesDirectionalLight) {
+        solidAngleSum += directionalLightSolidAngle;
+    }
+
+    float lightSelectionCDFWeightCounter = 0;
+    float chosenSolidAngle = -1;
+    for (int i = 0; i < lightDataBuffer.lightCount; i++) {
+        float dist = length(surfacePos - lightDataBuffer.data[i].position);
+        float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
+        float cdfWeight = lightSelectionCDFWeightCounter + solidAngle / solidAngleSum;
         if (cdfWeight >= lightCDFRand && chosenSolidAngle < 0) {
             lightIndex = i;
-            chosenSolidAngle = solidAngle / maxSolidAngle;
+            chosenSolidAngle = solidAngle / solidAngleSum;
         }
         lightSelectionCDFWeightCounter = cdfWeight;
-        solidAngleSum += solidAngle / maxSolidAngle;
     }
-    lightSelectionPDF = chosenSolidAngle / solidAngleSum;
-    light = lightDataBuffer.data[lightIndex];
+
+    if (includesDirectionalLight) {
+        float normalizedDirectionalSolidAngle = directionalLightSolidAngle / solidAngleSum;
+        float cdfWeight = lightSelectionCDFWeightCounter + normalizedDirectionalSolidAngle;
+        if (cdfWeight >= lightCDFRand && chosenSolidAngle < 0) {
+            lightIndex = -1;
+            chosenSolidAngle = directionalLightSolidAngle / solidAngleSum;
+        }
+        lightSelectionCDFWeightCounter = cdfWeight;
+    }
+    lightSelectionPDF = chosenSolidAngle;
+    if (lightIndex == -1) {
+        emissionColor = SUN_RADIENCE * lightData.color.rgb;
+        materialIndex = -1;
+        lightDirectionPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * lightSelectionPDF;
+        return sampleDirectionalLight(normalize(lightData.position).xyz, cos(directionalLightAngularRadius), randState);
+    }
+    Light light = lightDataBuffer.data[lightIndex];
 
     start = light.triangleCDFStartIndex;
-    end = start + light.triangleCDFStride;
+    int end = start + light.triangleCDFStride;
     float trianglePDF = 0;
     float triangleCDFRand = randFloat(randState);
     int triangleCDFIndex = 0;
@@ -216,7 +259,8 @@ vec3 sampleLight(inout uint randState, inout Light light, vec3 surfacePos, inout
     float cosTheta = max(abs(dot(lightDirection, lightNormal)), 0.01);
     float solidAnglePDF = pdfArea * pow(length(lightPosition - surfacePos), 2) / cosTheta;
     lightDirectionPDF = lightSelectionPDF * solidAnglePDF;
-    lightColor = materials.materialData[light.materialIndex].color.rgb;
+    emissionColor = materials.materialData[light.materialIndex].color.rgb * light.emissionFactor;
+    materialIndex = light.materialIndex;
     return lightDirection;
 
 }
@@ -488,9 +532,11 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
          rayPayload.normal = vec3(0.0f);
 
          vec3 visibility = texelFetch(visibilityBuffer, pixelCoords, 0).rgb;
+         uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
+
          if (visibility.b < 0.0001) {
-             imageStore(storageImage, pixelCoords, vec4(skyColor, 1.0));
-             return;
+             lightSum += skyColor;
+             continue;
          }
          Material material = materials.materialData[int(visibility.r)];
          uint primitiveIndex = uint(visibility.g);
@@ -503,7 +549,6 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
          vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
          vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
          vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
-         uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
          vec2 jitter = randFloat2(randState);
          vec2 uv = vec2(gl_LaunchIDEXT.xy + jitter) / vec2(gl_LaunchSizeEXT.xy);
          vec2 ndc = uv * 2.0 - 1.0;
@@ -526,10 +571,10 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
              continue;
          }
 
-         Light light;
-         vec3 lightColor;
+         vec3 emissionColor;
          float lightDirectionPDF;
-         vec3 lightDir = sampleLight(randState, light, origin.xyz, lightDirectionPDF, lightColor);
+         int lightMaterialIndex;
+         vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightMaterialIndex);
          if (lightDirectionPDF <= 0) continue;
          traceRayEXT(
              topLevelAS,
@@ -554,8 +599,8 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
              normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
          }
          processBounce(normal, material, prevRayDir, randState,
-                         rayPayload.distance < 0 || rayPayload.materialIndex == light.materialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, light.emissionFactor * lightColor, lightDirectionPDF, false);
+                         rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
+                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false);
 
          if (dot(rayDir, normal) <= 0.0) throughput = vec3(0.0f);
 
@@ -605,13 +650,21 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
              }
 
              if (rayPayload.distance < 0) {
-                  accumulatedLight += skyColor * throughput;
+                  float cosDir = cos(directionalLightAngularRadius);
+                  float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
+                  if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
+                      float bsdfPDF = 1 / (2 * PI);
+                      float misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                      accumulatedLight += lightIntensity * lightData.color.rgb * throughput * misWeight;
+                  } else {
+                      accumulatedLight += skyColor * throughput;
+                  }
                   break;
              }
 
-             Light light;
+             int lightMaterialIndex;
              float lightDirectionPDF;
-             vec3 lightDir = sampleLight(randState, light, origin.xyz, lightDirectionPDF, lightColor);
+             vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightMaterialIndex);
 
              if (lightDirectionPDF <= 0) break;
 
@@ -631,8 +684,8 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
 
 
              processBounce(normal, material, prevRayDir, randState,
-                 rayPayload.distance < 0 || rayPayload.materialIndex == light.materialIndex,
-                 throughput, accumulatedLight, rayDir, lightDir, light.emissionFactor * lightColor, lightDirectionPDF, true);
+                 rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, true);
          }
 
          lightSum += accumulatedLight;

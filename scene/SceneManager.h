@@ -16,6 +16,8 @@ class Loader;
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
+constexpr glm::vec4 LIGHT_DISABLED = glm::vec4(0);
+
 struct WorldObject {
     std::vector<Entity> entities;
     glm::mat4 transform = glm::mat4(1.0f);
@@ -61,7 +63,7 @@ class SceneManager {
 
 
     public:
-        SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp);
+        SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight);
 
         void updateAndDrawEntities(std::function<void()> updateTransform,  std::function<void(Entity&)> draw);
 

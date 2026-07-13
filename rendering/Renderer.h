@@ -47,12 +47,6 @@ struct InverseViewProj {
 
 
 
-struct alignas(16) Light {
-    glm::vec4 position = glm::vec4(0.0f);
-    glm::vec4 color = glm::vec4(0.0f);
-    glm::vec4 playerPos = glm::vec4(0.0f);
-    int frameCount = 0;
-};
 
 class Renderer {
     ShaderPipelineRegistry* shaderPipelineRegistry;
@@ -71,7 +65,7 @@ class Renderer {
     std::vector<Material> materials;
 
     std::optional<vk::RenderingInfo> renderingInfo;
-    Light light;
+    DirectionalLight light;
     Loader loader;
 
     MVP mvp;

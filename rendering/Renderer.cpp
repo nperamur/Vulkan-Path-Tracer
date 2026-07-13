@@ -31,7 +31,6 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
     this -> imageViewManager.emplace(allocator, device);
     this -> barrierManager.emplace();
-    light.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
     light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
 
     DescriptorsInfo triangleDescriptorsInfo = {
@@ -39,7 +38,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
-    sceneManager.emplace(loader, device, physicalDevice, mvp);
+    sceneManager.emplace(loader, device, physicalDevice, mvp, light);
 
     this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
                                             std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32B32A32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, triangleDescriptorsInfo, 3));

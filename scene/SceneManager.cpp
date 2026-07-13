@@ -244,7 +244,7 @@
 
 
 
-SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp) {
+SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight) {
 
     GLTFLoader gltfLoader;
 
@@ -262,10 +262,13 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
     entities.emplace_back(std::move(cornellBox));
 
+
     // WorldObject blocks;
     // blocks.entities = std::move(gltfLoader.load("Blocks", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
     // blocks.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // entities.emplace_back(std::move(blocks));
+    directionalLight.color = LIGHT_DISABLED;
+    //directionalLight.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
 
     for (Entity* entity : getEntities()) {
         entity -> setIndexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}));

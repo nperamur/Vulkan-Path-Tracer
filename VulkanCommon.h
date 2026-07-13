@@ -18,7 +18,12 @@ struct MVP {
     glm::mat4 view;
     glm::mat4 projection;
 };
-
+struct alignas(16) DirectionalLight {
+    glm::vec4 position = glm::vec4(0.0f);
+    glm::vec4 color = glm::vec4(0.0f);
+    glm::vec4 playerPos = glm::vec4(0.0f);
+    int frameCount = 0;
+};
 struct alignas(16) LightData {
     glm::vec3 emissionFactor;
     int triangleCDFStartIndex;
