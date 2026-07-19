@@ -3,7 +3,7 @@ This renderer uses Vulkan's Hardware Accelerated Raytracing Pipeline to implemen
 Diffuse lighting uses cosine weighted importance sampling and specular uses GGX VNDF sampling to model materials ranging from rough to mirror-like.
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
-<img width="600" alt="Screenshot 2026-05-30 235029" src="https://github.com/user-attachments/assets/f8a9d4ad-52b7-4094-b9f3-900a81109b60" />
+<img width="1056" height="957" alt="Screenshot 2026-06-03 195334" src="https://github.com/user-attachments/assets/603855ac-262e-4d97-be6e-9c7befb09b55" />
 
 | | Low Roughness | High Roughness |
 |---|---|---|
