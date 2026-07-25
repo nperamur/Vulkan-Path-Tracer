@@ -30,7 +30,7 @@ Renders demonstrating these additions are shown below.
 </table>
 
 
-**Importance Sampling**: We use these techniques to increase the convergence speed of the render.
+**Importance Sampling**: We use the following techniques to increase the convergence speed of the render.
 - Cosine-weighted diffuse sampling
 - GGX VNDF sampling for specular
 - Multiple importance sampling with next event estimation, using the balance heuristic
