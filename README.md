@@ -25,7 +25,7 @@ Renders demonstrating these additions are shown below.
   </tr>
   <tr>
     <td><img width="400" alt="Screenshot 2026-06-28 235308" src="https://github.com/user-attachments/assets/5d405821-ca61-4eba-bfe8-d86695d8c78d" /></td>
-    <td><img width="400" alt="Screenshot 2026-07-22 144710" src="https://github.com/user-attachments/assets/71a214d2-27d8-4bf8-8cae-6f7c44abbf0b" /></td>
+    <td><img height="400" alt="Screenshot 2026-07-25 003523" src="https://github.com/user-attachments/assets/69e9ba53-dcd0-42ed-bef2-e29a1561195f" /></td>
   </tr>
 </table>
 
