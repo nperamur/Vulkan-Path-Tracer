@@ -85,7 +85,7 @@ vec3 agxLook(vec3 val) {
     float power = 1.5;
     float sat   = 1.2;
 
-    val = pow(val * slope + offset, vec3(power));
+    val = pow(max(val * slope + offset, vec3(0.0)), vec3(power));
     return luma + sat * (val - luma);
 }
 
@@ -100,5 +100,6 @@ vec3 toneMapAgX(vec3 color) {
 void main() {
     vec3 baseColor = texture(baseImage, passTextureCoords).rgb;
     outColor = vec4(toneMapAgX(baseColor * 0.4), 1.0);
+    //outColor = vec4(ACESFilmicToneMapping(baseColor * 2), 1.0);
 
 }

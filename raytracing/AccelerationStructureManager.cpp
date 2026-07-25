@@ -229,7 +229,6 @@ void AccelerationStructureManager::buildAccelerationStructure(vk::AccelerationSt
         {primitiveCount}
     );
 
-    //TODO: ALIGN SCRATCH BUFFER WITH minAccelerationStructureScratchOffsetAlignment
     VkPhysicalDeviceAccelerationStructurePropertiesKHR asProps{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR
     };

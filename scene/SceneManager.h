@@ -10,6 +10,7 @@
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "../VulkanCommon.h"
+class GLTFLoader;
 struct MVP;
 class Loader;
 
@@ -63,7 +64,7 @@ class SceneManager {
 
 
     public:
-        SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight);
+        SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader);
 
         void updateAndDrawEntities(std::function<void()> updateTransform,  std::function<void(Entity&)> draw);
 

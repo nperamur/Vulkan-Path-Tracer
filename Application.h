@@ -54,6 +54,9 @@ class Application {
     static Application* app;
     public:void run();
     static Application *get();
+
+    VmaAllocator getMemoryAllocator();
+
     static void setup();
 
     GLFWwindow* getWindow();

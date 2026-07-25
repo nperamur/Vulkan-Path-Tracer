@@ -34,6 +34,8 @@ class RenderPassImageViewManager {
 
     TextureView* getTextureView(std::string id, int frameIndex);
 
+    Image &getImage(const std::string &id);
+
     void cleanUp() const;
 };
 

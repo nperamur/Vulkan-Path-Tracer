@@ -6,6 +6,12 @@
 
 #include "VulkanCommon.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "Application.h"
+#include "stb_image.h"
+
+GLTFLoader::GLTFLoader(TextureBufferManager &textureBufferManager) : textureBufferManager(textureBufferManager) {}
+
 std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii::Device &device,
                                      vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
     std::string fullPathStr = "resources/GLTFModels/" + name + "/" + name + ".gltf";
@@ -17,7 +23,7 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
         throw new std::exception("Cannot load gltf file");
     }
     fastgltf::Parser parser;
-    auto asset = parser.loadGltf(mappedData.get(), gltfPath.parent_path(), fastgltf::Options::LoadExternalBuffers);
+    auto asset = parser.loadGltf(mappedData.get(), gltfPath.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages);
     if (asset.error() != fastgltf::Error::None) {
         std::string msg = std::string(fastgltf::getErrorMessage(asset.error()));
         throw std::runtime_error("Cannot load gltf file: " + msg);
@@ -54,6 +60,8 @@ void GLTFLoader::processNodes(
     vk::raii::Device &device,
     vk::raii::PhysicalDevice &physicalDevice,
     MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
+
+    std::filesystem::path gltfDir = "resources/GLTFModels/" + name + "/";
     for (long nodeIndex : nodeIndices) {
         const fastgltf::Node& node = gltf.nodes[nodeIndex];
 
@@ -79,11 +87,171 @@ void GLTFLoader::processNodes(
                 Material material;
                 material.roughness = gltf.materials[materialIndex].pbrData.roughnessFactor;
                 material.metalness = gltf.materials[materialIndex].pbrData.metallicFactor;
-                material.color = glm::make_vec4(gltf.materials[materialIndex].pbrData.baseColorFactor.data()) * albedoMultiplier;
+                material.color = glm::make_vec4(gltf.materials[materialIndex].pbrData.baseColorFactor.data());
+                material.albedoFactor = albedoMultiplier;
                 //TODO: combine specular color factor with specular factor
 
                 if (gltf.materials[materialIndex].specular) {
                     material.reflectivity = gltf.materials[materialIndex].specular->specularFactor;
+                }
+
+                if (gltf.materials[materialIndex].pbrData.baseColorTexture.has_value()) {
+                    auto& texture = gltf.textures[gltf.materials[materialIndex].pbrData.baseColorTexture -> textureIndex];
+                    if (texture.imageIndex.has_value()) {
+                        auto& image = gltf.images[texture.imageIndex.value()];
+
+                        void* imageBytes;
+                        size_t imageSize;
+                        std::vector<std::byte> imageVec;
+                        std::visit(fastgltf::visitor {
+                            [&](auto&) {},
+                            [&](const fastgltf::sources::URI& uri) {
+                                std::filesystem::path fullPath = gltfDir / std::filesystem::path(uri.uri.path());
+                                std::ifstream file(fullPath, std::ios::binary | std::ios::ate);
+                                if (file.is_open()) {
+                                    size_t size = file.tellg();
+                                    file.seekg(0);
+                                    imageVec.resize(size);
+                                    file.read(reinterpret_cast<char*>(imageVec.data()), size);
+                                    imageSize = size;
+                                    imageBytes = imageVec.data();
+                                } else {
+                                    std::string filename(uri.uri.path());
+                                    throw std::runtime_error("Cannot load file: " + filename);
+                                }
+                            }, [&](const fastgltf::sources::BufferView bufferView) {
+                                auto& view = gltf.bufferViews[bufferView.bufferViewIndex];
+                                auto& buffer = gltf.buffers[view.bufferIndex];
+                                imageSize = buffer.byteLength;
+                                imageVec.resize(imageSize);
+                                std::visit(fastgltf::visitor {
+                                    [&](auto&) {},
+                                        [&](fastgltf::sources::Array& bufArr) {
+                                            memcpy(imageVec.data(), bufArr.bytes.data() + view.byteOffset, imageSize);
+                                            imageBytes = bufArr.bytes.data() + view.byteOffset;
+                                        },
+                                        [&](fastgltf::sources::Vector& bufVec) {
+                                            memcpy(imageVec.data(), bufVec.bytes.data() + view.byteOffset, imageSize);
+                                            imageBytes = bufVec.bytes.data() + view.byteOffset;
+                                        }
+                                    }, buffer.data
+                                );
+                            }, [&](fastgltf::sources::Vector vector) {
+                                imageVec.resize(imageSize);
+                                memcpy(imageVec.data(), vector.bytes.data(), imageSize);
+                                imageBytes = imageVec.data();
+                                imageSize = vector.bytes.size();
+                            },
+                            [&](fastgltf::sources::Array array) {
+                                imageSize = array.bytes.size();
+                                imageVec.resize(imageSize);
+                                memcpy(imageVec.data(), array.bytes.data(), imageSize);
+                                imageBytes = imageVec.data();
+                            }
+
+                        }, image.data);
+
+                        int width, height, channels;
+                        unsigned char* pixels = stbi_load_from_memory(
+                            reinterpret_cast<const unsigned char*>(imageBytes),
+                            static_cast<int>(imageSize),
+                            &width, &height, &channels,
+                            4 //RGBA8
+                        );
+                        size_t pixelsSize = static_cast<size_t>(width) * height * 4;
+
+                        if (!pixels) {
+                            throw std::runtime_error("failed to parse texture: " + std::string(stbi_failure_reason()));
+                            continue;
+                        }
+
+                        std::string baseColorImageId = TextureBuffers::baseColor + std::to_string(numBaseColors);
+                        int textureIndex = textureBufferManager.getTextureViews(TextureBuffers::baseColor).size();
+                        material.textureIndex = textureIndex;
+                        textureBufferManager.registerImage(baseColorImageId, TextureBuffers::baseColor, VK_FORMAT_R8G8B8A8_SRGB, width, height);
+                        numBaseColors++;
+                        VmaAllocator allocator = Application::get() -> getMemoryAllocator();
+
+                        VkBuffer buffer;
+                        VmaAllocation allocation;
+                        VkBufferCreateInfo bufferInfo{};
+                        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+                        bufferInfo.size = pixelsSize;
+                        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                        VmaAllocationCreateInfo allocInfo{};
+                        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+                        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                        VmaAllocationInfo resultInfo;
+                        vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation, &resultInfo);
+
+                        memcpy(resultInfo.pMappedData, pixels, pixelsSize);
+                        vmaFlushAllocation(allocator, allocation, 0, VK_WHOLE_SIZE);
+                        stbi_image_free(pixels);
+                        vk::CommandPoolCreateInfo poolInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0);
+                        vk::raii::CommandPool commandPool(device, poolInfo);
+                        vk::CommandBufferAllocateInfo cmdAllocInfo(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+                        vk::raii::CommandBuffers commandBuffers = device . allocateCommandBuffers(cmdAllocInfo);
+                        vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+                        vk::SubmitInfo submitInfo({}, {}, *commandBuffers[0]);
+                        vk::Queue queue = device.getQueue(0, 0);
+                        queue.waitIdle();
+                        commandBuffers[0].begin(beginInfo);
+                        Image* baseColorImage = &textureBufferManager.getImage(baseColorImageId);
+                        vk::BufferImageCopy2 copyInfo{};
+                        copyInfo.bufferOffset = 0;
+                        copyInfo.bufferRowLength = 0;
+                        copyInfo.bufferImageHeight = 0;
+
+                        copyInfo.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+                        copyInfo.imageSubresource.mipLevel = 0;
+                        copyInfo.imageSubresource.baseArrayLayer = 0;
+                        copyInfo.imageSubresource.layerCount = 1;
+
+                        copyInfo.imageOffset = vk::Offset3D{0, 0, 0};
+                        copyInfo.imageExtent = vk::Extent3D{
+                            static_cast<uint32_t>(width),
+                            static_cast<uint32_t>(height),
+                            1
+                        };
+                        vk::ImageSubresourceRange subresourceRange(
+                            vk::ImageAspectFlagBits::eColor,
+                            0, 1, 0, 1
+                        );
+
+                        vk::ImageMemoryBarrier2 barrier(
+                            vk::PipelineStageFlagBits2::eTopOfPipe,
+                            vk::AccessFlagBits2::eNone,
+                            vk::PipelineStageFlagBits2::eTransfer,
+                            vk::AccessFlagBits2::eTransferWrite,
+                            vk::ImageLayout::eUndefined,
+                            vk::ImageLayout::eTransferDstOptimal,
+                            0,
+                            0,
+                            baseColorImage->getImage(),
+                            subresourceRange
+                        );
+
+                        vk::DependencyInfo depInfo(
+                            {},
+                            {},
+                            {},
+                            barrier
+                        );
+
+                        commandBuffers[0].pipelineBarrier2(depInfo);
+                        vk::CopyBufferToImageInfo2 copyBufferToImageInfo = vk::CopyBufferToImageInfo2(
+                            buffer,
+                            baseColorImage -> getImage(),
+                            vk::ImageLayout::eTransferDstOptimal,
+                            1,
+                            &copyInfo
+                        );
+                        commandBuffers[0].copyBufferToImage2(copyBufferToImageInfo);
+                        commandBuffers[0].end();
+                        queue.submit(submitInfo);
+                        queue.waitIdle();
+                        vmaDestroyBuffer(allocator, buffer, allocation);
+                    }
                 }
 
 
@@ -155,6 +323,7 @@ void GLTFLoader::processNodes(
                 }
                 Entity entity = Entity(primitiveName, std::move(model), material, mvp.transformation);
                 entity.setTransform(totalTransform);
+                entity.updateTransformationMatrix();
                 i++;
 
                 if (isEmissive) {
@@ -182,5 +351,8 @@ void GLTFLoader::processNodes(
         }
 
     }
+
+
+
 
 }

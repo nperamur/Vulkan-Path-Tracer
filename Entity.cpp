@@ -98,6 +98,10 @@ void Entity::setNormalAddress(uint64_t normalAddress) {
     this -> material -> normalAddress = normalAddress;
 }
 
+void Entity::setTextureCoordsAddress(uint64_t textureCoordsAddress) {
+    this -> material -> textureCoordsAddress = textureCoordsAddress;
+}
+
 std::string Entity::getIdentifier() {
     return identifier;
 }

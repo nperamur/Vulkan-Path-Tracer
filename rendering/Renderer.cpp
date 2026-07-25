@@ -1,6 +1,7 @@
 
 
 #include "../Application.h"
+#include "../GLTFLoader.h"
 #include "../Loader.h"
 #include "../ModelLoader.h"
 #include "GLFW/glfw3.h"
@@ -30,25 +31,32 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> mvp = {.transformation = glm::mat4(1.0f), .view = Application::get() -> getCamera().createViewMatrix(), .projection = createProjectionMatrix()};
     this -> inverseViewProj = {.inverseView = glm::inverse(Application::get() -> getCamera().createViewMatrix()), .inverseProj = glm::inverse(createProjectionMatrix())};
     this -> imageViewManager.emplace(allocator, device);
+    this -> textureBufferManager.emplace(allocator, device);
+    textureBufferManager -> registerTextureBuffer(TextureBuffers::baseColor);
     this -> barrierManager.emplace();
     light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
+    //light.position = glm::vec4(500.0, 870.0, -300.0, 1.0);
 
-    DescriptorsInfo triangleDescriptorsInfo = {
+    glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
+    GLTFLoader gltfLoader(textureBufferManager.value());
+    sceneManager.emplace(loader, device, physicalDevice, mvp, light, gltfLoader);
+
+
+    DescriptorsInfo forwardPassDescriptorsInfo = {
         .staticData = {.numUBOs = 1, .numTextureSamplers = 0},
         .dynamicData = {.numUBOs = 2, .numTextureSamplers = 0}
     };
-    glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
-    sceneManager.emplace(loader, device, physicalDevice, mvp, light);
+    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::forwardPass, device,
+                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32B32A32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, forwardPassDescriptorsInfo, 3));
 
-    this -> shaderPipelineRegistry -> registerShaderPipeline(std::make_unique<ShaderPair>(Shaders::triangle, device,
-                                            std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32B32A32Sfloat, vk::Format::eR32G32B32A32Sfloat}, *allocator, triangleDescriptorsInfo, 3));
 
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
-        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::triangle) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  i);
+        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::forwardPass) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  i);
     }
     //raytracing
+    size_t numBaseColorTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::baseColor).size();
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5},
+        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5, .textureBuffersInfo = {TextureBufferInfo(numBaseColorTextureViews > 0 ? numBaseColorTextureViews : 1)}},
         .dynamicData = {.numUBOs = 2}
     };
     materials = sceneManager -> getAllMaterials();
@@ -75,6 +83,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         rtShader->setAccelerationStructure(RTShaderSlots::accelerationStructure, accelStructureManager -> getTLASData(), i);
         rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
+        if (numBaseColorTextureViews > 0) {
+            rtShader->setTextureBuffer(RTShaderSlots::baseColorTextures, textureBufferManager -> getTextureViews(TextureBuffers::baseColor), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+        }
         if (!triangleCDFBuffer.empty()) {
             rtShader->setStorageBuffer(RTShaderSlots::triangleCdfBuffer, triangleCDFBuffer.data(), triangleCDFBuffer.size() * sizeof(float), i);
             rtShader->setStorageBuffer(RTShaderSlots::lightCdfBuffer, lightCDFBuffer.data(), lightCDFBuffer.size() * sizeof(float), i);
@@ -121,7 +132,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     //TODO: add secondary command buffer support later
     light.playerPos = glm::vec4(Application::get() -> getCamera().getPos(), 1);
     RaytracingShaderPipeline* rtShaderPipeline = dynamic_cast<RaytracingShaderPipeline*> (shaderPipelineRegistry->getShaderPipeline(Shaders::raytracing).get());
-    ShaderPair* triangleShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::triangle).get());
+    ShaderPair* forwardPassShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::forwardPass).get());
     ShaderPair* combineShaders = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::combineShader).get());
     ShaderPair* toneMappingShader = dynamic_cast<ShaderPair*> (shaderPipelineRegistry->getShaderPipeline(Shaders::toneMapping).get());
 
@@ -159,8 +170,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     mvp.view = Application::get() -> getCamera().createViewMatrix();
     float time = glfwGetTime();
 
-    struct TriangleUBO { glm::vec4 color; };
-    TriangleUBO data;
+    struct ForwardPassUBO { glm::vec4 color; };
+    ForwardPassUBO data;
     data.color = glm::vec4(std::sin(time * 1.0f) * 0.5f + 0.5f, std::sin(time * 1.3f) * 0.5f + 0.5f, std::sin(time * 1.7f) * 0.5f + 0.5f, 1.0f);
     glm::dmat4 dProj = mvp.projection;
     glm::dmat4 dView = mvp.view;
@@ -168,7 +179,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     inverseViewProj.inverseView = glm::inverse(dView);
 
 
-    triangleShader -> setUniform(ForwardPassShaderSlots::triangleUBO, &data, sizeof(data), frameIndex);
+    forwardPassShader -> setUniform(ForwardPassShaderSlots::forwardPassUBO, &data, sizeof(data), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
     combineShaders -> setUniform(CombineShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
@@ -188,8 +199,8 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     renderGraph.initCallbacks([&](Model& model)
         { renderModel(commandBuffer, model, index, viewport, rect2D); index++; }, [&]() {
             traceRays(commandBuffer, viewport, rect2D, width, height, 1);
-        }, [this, &commandBuffer, &triangleShader, &rtShaderPipeline, frameIndex]() {
-            commandBuffer.pushConstants2({ triangleShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp });
+        }, [this, &commandBuffer, &forwardPassShader, &rtShaderPipeline, frameIndex]() {
+            commandBuffer.pushConstants2({ forwardPassShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp });
         }
     );
 
@@ -210,7 +221,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
         .renderStage = RenderStage::forward,
         .reads = {},
         .writes = {baseForwardRenderPassImage, depthRenderPassImage, visibilityRenderPassImage, normalRenderPassImage},
-        .bindPipeline = [&]() { triangleShader -> bind(commandBuffer, frameIndex );},
+        .bindPipeline = [&]() { forwardPassShader -> bind(commandBuffer, frameIndex );},
         .toPresent = false
     };
     renderGraph.addPass(forwardPass);
@@ -357,6 +368,7 @@ void Renderer::cleanUp() {
     this -> shaderPipelineRegistry -> cleanUp();
     this -> accelStructureManager -> cleanUp();
     this -> imageViewManager -> cleanUp();
+    this -> textureBufferManager -> cleanUp();
 }
 
 

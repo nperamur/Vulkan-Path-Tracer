@@ -51,19 +51,20 @@ namespace RTShaderSlots {
     inline constexpr DescriptorBinding lightUBO = {.set=1, .binding=0};
     inline constexpr DescriptorBinding inverseViewProj = {.set=1, .binding=1};
     inline constexpr DescriptorBinding depthBuffer = {.set = 0, .binding = 1};
-    inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 4};
-    inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 5};
-    inline constexpr DescriptorBinding triangleCdfBuffer = {.set = 0, .binding = 6};
-    inline constexpr DescriptorBinding lightCdfBuffer = {.set = 0, .binding = 7};
-    inline constexpr DescriptorBinding lightDataBuffer = {.set = 0, .binding = 8};
-    inline constexpr DescriptorBinding emissiveVerticesBuffer = {.set = 0, .binding = 9};
+    inline constexpr DescriptorBinding baseColorTextures = {.set = 0, .binding = 4};
+    inline constexpr DescriptorBinding rtOutput = {.set = 0, .binding = 5};
+    inline constexpr DescriptorBinding materialsBuffer = {.set = 0, .binding = 6};
+    inline constexpr DescriptorBinding triangleCdfBuffer = {.set = 0, .binding = 7};
+    inline constexpr DescriptorBinding lightCdfBuffer = {.set = 0, .binding = 8};
+    inline constexpr DescriptorBinding lightDataBuffer = {.set = 0, .binding = 9};
+    inline constexpr DescriptorBinding emissiveVerticesBuffer = {.set = 0, .binding = 10};
     inline constexpr DescriptorBinding visibilityBuffer = {.set = 0, .binding = 2};
     inline constexpr DescriptorBinding normalBuffer = {.set = 0, .binding = 3};
 }
 
 namespace ForwardPassShaderSlots {
     inline constexpr DescriptorBinding lightUBO = {.set = 0,.binding = 0};
-    inline constexpr DescriptorBinding triangleUBO = {.set = 1,.binding = 0};
+    inline constexpr DescriptorBinding forwardPassUBO = {.set = 1,.binding = 0};
     inline constexpr DescriptorBinding mvp = {.set = 1,.binding = 1};
 }
 

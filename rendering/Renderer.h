@@ -16,12 +16,13 @@
 #include "../image-views/RenderPassImageViewManager.h"
 #include "../scene/SceneManager.h"
 #include "RenderGraph.h"
-
+#include "../image-views/TextureBufferManager.h"
 #include "../syncronization/BarrierManager.h"
 #define ID(name, str) inline constexpr const char* name = str;
 
+
 namespace Shaders {
-    ID(triangle, "triangle")
+    ID(forwardPass, "forwardPass")
     ID(raytracing, "raytracing")
     ID(combineShader, "combineShader")
     ID(toneMapping, "tonemapping")
@@ -39,6 +40,9 @@ namespace RenderPassImages {
     ID(normalBuffer, "normals")
 }
 
+namespace TextureBuffers {
+    ID(baseColor, "baseColor")
+}
 
 struct InverseViewProj {
     alignas(16) glm::mat4 inverseView;
@@ -80,6 +84,7 @@ class Renderer {
     std::optional<AccelerationStructureManager> accelStructureManager;
 
     std::optional<RenderPassImageViewManager> imageViewManager;
+    std::optional<TextureBufferManager> textureBufferManager;
 
 
     Model screenQuad;

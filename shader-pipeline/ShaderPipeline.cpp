@@ -238,6 +238,52 @@ void ShaderPipeline::setTextureSampler(DescriptorBinding descriptorBinding, Text
 }
 
 
+//This method supports bindless texture arrays
+void ShaderPipeline::setTextureBuffer(DescriptorBinding descriptorBinding, std::vector<TextureView>& images, vk::ImageLayout imageLayout, int frameIndex) const {
+    std::vector<vk::DescriptorImageInfo> imageInfo;
+    for (TextureView& image : images) {
+        vk::SamplerCreateInfo samplerCreateInfo(
+         {},
+             vk::Filter::eLinear,
+             vk::Filter::eLinear,
+             vk::SamplerMipmapMode::eLinear,
+             vk::SamplerAddressMode::eRepeat,
+             vk::SamplerAddressMode::eRepeat,
+         vk::SamplerAddressMode::eRepeat,
+             0.0,
+             0.0,
+             0.0,
+             vk::False, vk::CompareOp::eNever,
+             0.0, 0.0, vk::BorderColor::eIntOpaqueBlack
+         );
+        if (!image.sampler.has_value()) {
+            image.sampler.emplace(device->createSampler(samplerCreateInfo));
+        }
+        vk::DescriptorImageInfo descriptorImageInfo(
+            *image.sampler,
+            image.imageView,
+            imageLayout
+
+        );
+        imageInfo.push_back(descriptorImageInfo);
+    }
+
+    vk::WriteDescriptorSet write(
+    *descriptorSets[frameIndex][descriptorBinding.set],
+        descriptorBinding.binding,
+        0,
+        imageInfo.size(),
+        vk::DescriptorType::eCombinedImageSampler,
+        imageInfo.data(),
+        nullptr,
+        nullptr,
+        nullptr
+    );
+    device->updateDescriptorSets(write, nullptr);
+
+}
+
+
 const std::vector<Image> & ShaderPipeline::getStorageImages() const {
     return storageImages;
 }
@@ -303,7 +349,7 @@ void ShaderPipeline::setUpDescriptors() {
     if (desc.dynamicData.numUBOs + desc.staticData.numUBOs > 0)
         poolSizes.push_back({ vk::DescriptorType::eUniformBuffer, 100 });
     if (desc.dynamicData.numTextureSamplers + desc.staticData.numTextureSamplers > 0)
-        poolSizes.push_back({ vk::DescriptorType::eCombinedImageSampler, 100 });
+        poolSizes.push_back({ vk::DescriptorType::eCombinedImageSampler, 1000 });
     if (desc.dynamicData.numAccelerationStructures + desc.staticData.numAccelerationStructures > 0)
         poolSizes.push_back({ vk::DescriptorType::eAccelerationStructureKHR, 100 });
     if (desc.dynamicData.numStorageImages + desc.staticData.numStorageImages > 0)
@@ -385,10 +431,21 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
         bindings.push_back(binding);
     }
 
+    for (int i = 0; i < desc.textureBuffersInfo.size(); i++) {
+        vk::DescriptorSetLayoutBinding binding(
+            desc.numUBOs + desc.numAccelerationStructures + desc.numTextureSamplers + i,
+            vk::DescriptorType::eCombinedImageSampler,
+            desc.textureBuffersInfo[i].numTextures,
+            {getShaderStageFlags()},
+            {}
+
+        );
+        bindings.push_back(binding);
+    }
 
     for (int i = 0; i < desc.numStorageImages; i++) {
         vk::DescriptorSetLayoutBinding binding(
-            desc.numUBOs + desc.numTextureSamplers + desc.numAccelerationStructures + i,
+            desc.numUBOs + desc.numTextureSamplers + desc.textureBuffersInfo.size() + desc.numAccelerationStructures + i,
             vk::DescriptorType::eStorageImage,
             1,
             {getShaderStageFlags()},
@@ -399,7 +456,7 @@ vk::DescriptorSetLayoutCreateInfo ShaderPipeline::getDescriptorSetCreateInfo(Des
 
     for (int i = 0; i < desc.numStorageBuffers; i++) {
         vk::DescriptorSetLayoutBinding binding(
-            desc.numUBOs + desc.numTextureSamplers + desc.numAccelerationStructures + desc.numStorageImages + i,
+            desc.numUBOs + desc.numTextureSamplers + desc.textureBuffersInfo.size() + desc.numAccelerationStructures + desc.numStorageImages + i,
             vk::DescriptorType::eStorageBuffer,
             1,
             {getShaderStageFlags()},

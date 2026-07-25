@@ -60,6 +60,8 @@ add_executable(vulkan_pathtracer Application.cpp Application.h
         ModelLoader.cpp
         GLTFLoader.cpp
         GLTFLoader.h
+        image-views/TextureBufferManager.cpp
+        image-views/TextureBufferManager.h
 )
 target_link_libraries(vulkan_pathtracer PRIVATE glfw glm)
 target_compile_definitions(vulkan_pathtracer PRIVATE GLM_ENABLE_EXPERIMENTAL)
@@ -156,6 +158,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fastgltf)
 set(FASTGLTF_DISABLE_CUSTOM_MEMORY_POOL OFF)
 target_link_libraries(vulkan_pathtracer PRIVATE fastgltf)
+
+FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG        master
+)
+FetchContent_MakeAvailable(stb)
+target_include_directories(vulkan_pathtracer PRIVATE ${stb_SOURCE_DIR})
 
 
 file(COPY resources DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

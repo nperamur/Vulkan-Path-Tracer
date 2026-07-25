@@ -16,10 +16,13 @@ struct alignas(16) Material {
     uint64_t vertexAddress;
     uint64_t indexAddress;
     uint64_t normalAddress;
+    uint64_t textureCoordsAddress;
     float roughness = 1.0f;
     float metalness = 0.0f;
     float reflectivity = 0.0f;
-    int lightIndex = -1.0;
+    float albedoFactor = 1.0f;
+    int lightIndex = -1;
+    int textureIndex = -1;
 };
 
 class Entity {
@@ -81,6 +84,7 @@ class Entity {
         void setVertexAddress(uint64_t vertexAddress);
         void setIndexAddress(uint64_t indexAddress);
         void setNormalAddress(uint64_t normalAddress);
+        void setTextureCoordsAddress(uint64_t normalAddress);
 
         std::string getIdentifier();
 

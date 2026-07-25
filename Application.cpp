@@ -313,7 +313,7 @@ void Application::setupDevices() {
     positionFetchFeatures.rayTracingPositionFetch = VK_TRUE;
     robustnessFeatures.nullDescriptor = VK_TRUE;
     rtFeatures.rayTracingPipeline = VK_TRUE;
-    rtFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE; // optional
+    rtFeatures.rayTracingPipelineTraceRaysIndirect = VK_TRUE;
     rtFeatures.pNext = nullptr;
     vk::PhysicalDeviceAccelerationStructureFeaturesKHR physicalDeviceAccelerationFeatures{};
     physicalDeviceAccelerationFeatures.accelerationStructure = VK_TRUE;
@@ -323,6 +323,10 @@ void Application::setupDevices() {
     physicalDeviceFeatures.features.shaderInt64 = VK_TRUE;
     VkPhysicalDeviceDescriptorIndexingFeatures indexing{};
     indexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+    indexing.runtimeDescriptorArray = VK_TRUE;
+    indexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    indexing.descriptorBindingPartiallyBound = VK_TRUE;
+    indexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,
@@ -342,6 +346,7 @@ void Application::setupDevices() {
     physicalDeviceAccelerationFeatures.setPNext(&robustnessFeatures);
     robustnessFeatures.setPNext(&physicalDeviceFeatures);
     physicalDeviceFeatures.setPNext(&positionFetchFeatures);
+    positionFetchFeatures.setPNext(&indexing);
 
 
 
@@ -550,6 +555,10 @@ int main() {
 
 Application *Application::get() {
     return app;
+}
+
+VmaAllocator Application::getMemoryAllocator() {
+    return allocator;
 }
 
 void Application::setup() {

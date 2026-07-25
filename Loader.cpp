@@ -121,12 +121,12 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
 
     if (textureCoords.has_value()) {
         vk::BufferCreateInfo textureCoordCreateInfo({}, textureCoords->size() * sizeof(float),
-            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive);
+            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::SharingMode::eExclusive);
         textureCoordBuffer.emplace(device, textureCoordCreateInfo);
         auto textureCoordMemReqs = textureCoordBuffer->getMemoryRequirements();
         for (int i = 0; i < memProps.memoryTypeCount; i++) {
             if ((textureCoordMemReqs.memoryTypeBits & (1 << i)) != 0 && (memProps.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
-                textureCoordMemory.emplace(device, vk::MemoryAllocateInfo(textureCoordMemReqs.size, i));
+                textureCoordMemory.emplace(device, vk::MemoryAllocateInfo(textureCoordMemReqs.size, i, memFlagsInfo));
                 break;
             }
         }

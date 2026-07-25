@@ -11,12 +11,17 @@
 #include <vulkan/vulkan_raii.hpp>
 #include "vk_mem_alloc.h"
 
+struct TextureBufferInfo {
+    uint32_t numTextures;
+};
+
 struct DescriptorLayoutDesc {
     uint32_t numUBOs;
     uint32_t numTextureSamplers;
     uint32_t numAccelerationStructures;
     uint32_t numStorageImages;
     uint32_t numStorageBuffers;
+    std::vector<TextureBufferInfo> textureBuffersInfo;
 };
 struct DescriptorsInfo {
     DescriptorLayoutDesc staticData;
@@ -125,6 +130,7 @@ class ShaderPipeline {
 
         virtual void bind(vk::raii::CommandBuffer& cmd, int frameIndex) = 0;
         void setTextureSampler(DescriptorBinding descriptorBinding, TextureView &image, vk::ImageLayout imageLayout, int frameIndex) const;
+        void setTextureBuffer(DescriptorBinding descriptorBinding, std::vector<TextureView>& images, vk::ImageLayout imageLayout, int frameIndex) const;
     protected:
         void setUpDescriptors();
         virtual void setUpPipeline() = 0;
