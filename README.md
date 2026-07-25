@@ -20,7 +20,7 @@ Renders demonstrating these additions are shown below.
 
 <table>
   <tr>
-    <td align="center"><b>Pathtraced Cornell box (Area lights)</b></td>
+    <td align="center"><b>Cornell box (Area lights)</b></td>
     <td align="center"><b>Textured Sponza</b></td>
   </tr>
   <tr>
