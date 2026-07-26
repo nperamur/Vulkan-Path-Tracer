@@ -149,5 +149,9 @@ Model Loader::load(std::vector<float> vertices, std::optional<std::vector<uint32
     model.normalBuffer = std::move(normalBuffer);
     model.textureCoordBuffer = std::move(textureCoordBuffer);
 
+    textureCoordBuffer = std::nullopt;
+    normalBuffer = std::nullopt;
+    vertexBuffer = std::nullopt;
+    indexBuffer = std::nullopt;
     return model;
 }

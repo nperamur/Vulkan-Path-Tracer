@@ -34,8 +34,8 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> textureBufferManager.emplace(allocator, device);
     textureBufferManager -> registerTextureBuffer(TextureBuffers::baseColor);
     this -> barrierManager.emplace();
-    light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
-    //light.position = glm::vec4(500.0, 870.0, -300.0, 1.0);
+    //light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
+    light.position = glm::vec4(500.0, 860.0, 300.0, 1.0);
 
     glfwSetFramebufferSizeCallback(Application::get() -> getWindow(), framebufferResizeCallback);
     GLTFLoader gltfLoader(textureBufferManager.value());

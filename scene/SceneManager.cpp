@@ -51,13 +51,19 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // sponza.setPosition(glm::vec3(10, -3, 0));
     // entities.emplace_back(std::move(sponza));
     //
-    WorldObject cornellBox;
-    cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
-    cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-    //cornellBox.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-    // cornellBox.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
-    cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
-    entities.emplace_back(std::move(cornellBox));
+
+    // WorldObject cornellBox;
+    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
+    // entities.emplace_back(std::move(cornellBox));
+
+    WorldObject cornellBoxSpheres;
+    cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    cornellBoxSpheres.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    cornellBoxSpheres.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
+    cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));
+    entities.emplace_back(std::move(cornellBoxSpheres));
 
 
     // WorldObject blocks;
@@ -65,13 +71,21 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // blocks.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // blocks.setPosition(glm::vec3(-250.0f, -90.0f, 150.0f));
     // entities.emplace_back(std::move(blocks));
+
+    // WorldObject cornellBoxMirror;
+    // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    // cornellBoxMirror.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    // cornellBoxMirror.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
+    // cornellBoxMirror.setPosition(glm::vec3(0.0, -1, 0.0));
+    // entities.emplace_back(std::move(cornellBoxMirror));
+
     directionalLight.color = LIGHT_DISABLED;
     // directionalLight.color = glm::vec4(1.0, 0.95, 0.8, 1.0);
 
     for (Entity* entity : getEntities()) {
-        entity -> setIndexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}));
-        entity -> setVertexAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().vertexBuffer}));
-        entity -> setNormalAddress(device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().normalBuffer}));
+        entity -> setIndexAddress(entity -> getModel().indexBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}) : 0);
+        entity -> setVertexAddress(entity -> getModel().vertexBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().vertexBuffer}) : 0);
+        entity -> setNormalAddress(entity -> getModel().normalBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().normalBuffer}) : 0);
         entity -> setTextureCoordsAddress(entity -> getModel().textureCoordBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().textureCoordBuffer}) : 0);
         entity -> updateTransformationMatrix();
         entity -> updateEmissiveVertices();

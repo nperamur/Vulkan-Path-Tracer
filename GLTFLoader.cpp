@@ -22,7 +22,7 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
     if (mappedData.error() != fastgltf::Error::None) {
         throw new std::exception("Cannot load gltf file");
     }
-    fastgltf::Parser parser;
+    fastgltf::Parser parser(fastgltf::Extensions::KHR_materials_specular | fastgltf::Extensions::KHR_materials_ior);
     auto asset = parser.loadGltf(mappedData.get(), gltfPath.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages);
     if (asset.error() != fastgltf::Error::None) {
         std::string msg = std::string(fastgltf::getErrorMessage(asset.error()));
@@ -91,9 +91,18 @@ void GLTFLoader::processNodes(
                 material.albedoFactor = albedoMultiplier;
                 //TODO: combine specular color factor with specular factor
 
+                float ior = gltf.materials[materialIndex].ior;
+                float f0Base = std::pow((ior - 1.0f) / (ior + 1.0f), 2.0f);
+                float specularFactor = 1.0f;
+                float specularColorAvg = 1.0f;
                 if (gltf.materials[materialIndex].specular) {
-                    material.reflectivity = gltf.materials[materialIndex].specular->specularFactor;
+                    specularFactor = gltf.materials[materialIndex].specular->specularFactor;
+                    if (auto scfPtr = &gltf.materials[materialIndex].specular->specularColorFactor) {
+                        const auto& scf = *scfPtr;
+                        specularColorAvg = (scf[0] + scf[1] + scf[2]) / 3.0f;
+                    }
                 }
+                material.reflectivity = f0Base * specularFactor * specularColorAvg;
 
                 if (gltf.materials[materialIndex].pbrData.baseColorTexture.has_value()) {
                     auto& texture = gltf.textures[gltf.materials[materialIndex].pbrData.baseColorTexture -> textureIndex];

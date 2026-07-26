@@ -407,7 +407,6 @@ vec3 fresnelSchlick(vec3 normal, vec3 view, vec3 f0) {
 }
 
 
-//note for reflectivity, a good value is 0.04
 vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
@@ -459,7 +458,7 @@ float getGGX_VNDF_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir)
 }
 
 const int NUM_SAMPLES_PER_PIXEL = 1;
-const bool INTERPOLATED_NORMALS = false;
+const bool INTERPOLATED_NORMALS = true;
 const int NUM_MAX_BOUNCES = 4;
 const float lightIntensity = 50;
 //const vec3 skyColor = vec3(0.4, 0.45, 0.9);
@@ -496,6 +495,8 @@ void processBounce(
 
     vec3 directMicrofacetNormal = normalize(-prevRayDir + normalize(lightDir));
     vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
+    vec3 fresnel = fresnelSchlick(normal, -prevRayDir, f0);
+    vec3 specularBRDF = getSpecularBRDF(material, surfaceColor, normal, directMicrofacetNormal, -prevRayDir, normalize(lightDir));
     directBRDF = getSpecularBRDF(material, surfaceColor, normal, directMicrofacetNormal, -prevRayDir, normalize(lightDir)) +
                     getDiffuseBRDF(surfaceColor) * (1.0 - fresnelSchlick(directMicrofacetNormal, -prevRayDir, f0)) * (1.0 - material.metalness);
 
@@ -509,7 +510,6 @@ void processBounce(
         directLight = directBRDF * max(0, dot(normal, normalize(lightDir))) * lightIntensity * emissionColor * misWeight / lightDirectionPDF;
     }
     if (dot(rayDir, normal) <= 0.0) { throughput = vec3(0.0f); return; }
-    accumulatedLight += directLight * throughput;
     float specularProb = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir), 1.0, material.metalness);
 
     float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
@@ -517,7 +517,12 @@ void processBounce(
 
     float fullPdf = ((1.0 - specularProb) * pdfDiffuse) + (specularProb * pdfSpecular);
     fullPdf = max(fullPdf, 1e-6);
-
+    if (material.roughness == 0 && !diffuseBounce)  {
+        throughput *= (fresnelSchlick(normal, -prevRayDir, f0))
+                        / specularProb;
+        return;
+    }
+    accumulatedLight += directLight * throughput;
     if (diffuseBounce) {
         throughput *= getDiffuseBRDF(surfaceColor)
                       * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
@@ -675,6 +680,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
          for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
              rayPayload.distance = -1.0f;
+             bool mis = material.roughness != 0;
              traceRayEXT(
                  topLevelAS,
                  gl_RayFlagsOpaqueEXT,
@@ -715,7 +721,10 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              if (material.lightIndex >= 0) {
                  Light light = lightDataBuffer.data[material.lightIndex];
                  float bsdfPDF = 1 / (2 * PI);
-                 float misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                 float misWeight = 1.0f;
+                 if (mis) {
+                    misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                 }
                  accumulatedLight += lightIntensity * light.emissionFactor * materials.materialData[light.materialIndex].color.rgb * throughput * misWeight;
                  break;
              }
@@ -723,9 +732,12 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              if (rayPayload.distance < 0) {
                   float cosDir = cos(directionalLightAngularRadius);
                   float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
+                  float misWeight = 1.0f;
                   if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
                       float bsdfPDF = 1 / (2 * PI);
-                      float misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                      if (mis) {
+                        misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                      }
                       accumulatedLight += lightIntensity * lightData.color.rgb * throughput * misWeight;
                   } else {
                       accumulatedLight += skyColor * throughput;
@@ -733,6 +745,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                   break;
              }
 
+             mis = material.roughness != 0;
              int lightMaterialIndex;
              float lightDirectionPDF;
              lightDist = -1.0f;
@@ -740,24 +753,27 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              if (lightDirectionPDF <= 0) break;
 
-             traceRayEXT(
-                 topLevelAS,
-                 gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-                 0xFF,
-                 0,
-                 0,
-                 0,
-                 origin.xyz,
-                 tMin,
-                 lightDir,
-                 lightDist > 0 ? lightDist : tMax,
-                 0
-             );
+
+            if (material.roughness != 0) {
+                traceRayEXT(
+                     topLevelAS,
+                     gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+                     0xFF,
+                     0,
+                     0,
+                     0,
+                     origin.xyz,
+                     tMin,
+                     lightDir,
+                     lightDist > 0 ? lightDist : tMax,
+                     0
+                );
+            }
 
 
              processBounce(normal, material, getSurfaceColor(material, uv, primitiveIndex), prevRayDir, randState,
-                 rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, true);
+                 material.roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0);
          }
 
          lightSum += accumulatedLight;
