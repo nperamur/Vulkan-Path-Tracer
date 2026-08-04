@@ -477,7 +477,8 @@ void processBounce(
     vec3 lightDir,
     vec3 emissionColor,
     float lightDirectionPDF,
-    bool mis
+    bool mis,
+    bool russianRoulette
 ) {
     vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, pow(material.roughness, 2), normal);
     bool diffuseBounce = isDiffuseBounce(randState, microfacetNormal, -prevRayDir, material, surfaceColor);
@@ -533,6 +534,15 @@ void processBounce(
         throughput *= (getSpecularBRDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, rayDir)
                       * max(dot(normal, rayDir), 0.0))
                       / fullPdf;
+    }
+
+    if (russianRoulette) {
+        float p = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.05, 0.95);
+        if (randFloat(randState) >= p) {
+            throughput = vec3(0);
+            return;
+        }
+        throughput /= p;
     }
 }
 
@@ -674,10 +684,14 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          }
          processBounce(normal, material, getSurfaceColor(material, vec2(u, v), primitiveIndex), prevRayDir, randState,
                          rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false);
+                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false, false);
 
          if (dot(rayDir, normal) <= 0.0) throughput = vec3(0.0f);
 
+         if (throughput == vec3(0)) {
+            lightSum += accumulatedLight;
+            continue;
+         }
          for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
              rayPayload.distance = -1.0f;
              bool mis = material.roughness != 0;
@@ -773,7 +787,11 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              processBounce(normal, material, getSurfaceColor(material, uv, primitiveIndex), prevRayDir, randState,
                  material.roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0);
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, i >= 2);
+
+             if (throughput == vec3(0)) {
+                break;
+             }
          }
 
          lightSum += accumulatedLight;
