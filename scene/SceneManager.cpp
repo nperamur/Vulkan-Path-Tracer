@@ -53,13 +53,13 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     //
 
     WorldObject cornellBox;
-    cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 1.0f, emissiveVertices, lightData));
     cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
     entities.emplace_back(std::move(cornellBox));
 
     // WorldObject cornellBoxSpheres;
-    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 1.0f, emissiveVertices, lightData));
     // cornellBoxSpheres.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBoxSpheres.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));
@@ -73,11 +73,17 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // entities.emplace_back(std::move(blocks));
 
     // WorldObject cornellBoxMirror;
-    // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, emissiveVertices, lightData));
+    // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, 1.0f, emissiveVertices, lightData));
     // cornellBoxMirror.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBoxMirror.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxMirror.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBoxMirror));
+
+    // WorldObject veachMisTestScene;
+    // veachMisTestScene.entities = std::move(gltfLoader.load("veach-mis-core", loader, device, physicalDevice, mvp, 0.1f, 0.02f, emissiveVertices, lightData));
+    // veachMisTestScene.setScale(glm::vec3(0.05f));
+    // veachMisTestScene.setRotation(-90, glm::vec3(0.0f, 1.0f, 0.0f));
+    // entities.emplace_back(std::move(veachMisTestScene));
 
     directionalLight.color = LIGHT_DISABLED;
     //directionalLight.color = glm::vec4(1.0, 0.95, 0.8, 1.0);

@@ -20,13 +20,13 @@ class GLTFLoader {
     public:
 
     GLTFLoader(TextureBufferManager& textureBufferManager);
-    std::vector<Entity> load(std::string name, Loader &loader, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices,
+    std::vector<Entity> load(std::string name, Loader &loader, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices,
                                 std::vector<LightData>& lightData);
 
 
     void processNodes(fastgltf::Asset &gltf, std::vector<Entity> &entities,
         const fastgltf::pmr::MaybeSmallVector<unsigned long long> &nodeIndices, glm::mat4 transform, std::string name, Loader &loader, vk::raii::Device &device, vk::raii::PhysicalDevice &physicalDevice,
-        MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData);
+        MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData);
 
 
 };

@@ -13,7 +13,7 @@
 GLTFLoader::GLTFLoader(TextureBufferManager &textureBufferManager) : textureBufferManager(textureBufferManager) {}
 
 std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii::Device &device,
-                                     vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
+                                     vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
     std::string fullPathStr = "resources/GLTFModels/" + name + "/" + name + ".gltf";
     std::filesystem::path gltfPath(fullPathStr);
 
@@ -40,7 +40,7 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
     std::vector<Entity> entities;
     glm::mat4 initialTransform = glm::mat4(1.0);
     fastgltf::pmr::MaybeSmallVector<unsigned long long> nodeIndices(scene.nodeIndices.begin(), scene.nodeIndices.end());
-    processNodes(gltf, entities, nodeIndices, initialTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, emissiveVertices, lightData);
+    processNodes(gltf, entities, nodeIndices, initialTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, lightMultiplier, emissiveVertices, lightData);
 
 
     return entities;
@@ -59,7 +59,7 @@ void GLTFLoader::processNodes(
     Loader &loader,
     vk::raii::Device &device,
     vk::raii::PhysicalDevice &physicalDevice,
-    MVP& mvp, float albedoMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
+    MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
 
     std::filesystem::path gltfDir = "resources/GLTFModels/" + name + "/";
     for (long nodeIndex : nodeIndices) {
@@ -75,7 +75,7 @@ void GLTFLoader::processNodes(
         fastgltf::math::fmat4x4 fastMat = fastgltf::getTransformMatrix(node);
         glm::mat4 nodeTransform = glm::make_mat4(fastMat.data());
         glm::mat4 totalTransform = parentTransform * nodeTransform;
-        processNodes(gltf, entities, node.children, totalTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, emissiveVertices, lightData);
+        processNodes(gltf, entities, node.children, totalTransform, name, loader, device, physicalDevice, mvp, albedoMultiplier, lightMultiplier, emissiveVertices, lightData);
 
         if (node.meshIndex.has_value()) {
             const fastgltf::Mesh& mesh = gltf.meshes[node.meshIndex.value()];
@@ -337,7 +337,7 @@ void GLTFLoader::processNodes(
 
                 if (isEmissive) {
                     LightData currLightData;
-                    currLightData.emissionFactor = glm::make_vec3(gltf.materials[materialIndex].emissiveFactor.data());
+                    currLightData.emissionFactor = glm::make_vec3(gltf.materials[materialIndex].emissiveFactor.data()) * lightMultiplier;
                     currLightData.materialIndex = static_cast<int>(entities.size());
                     currLightData.triangleCDFStartIndex = static_cast<int>(emissiveVertices.size() / 9);
                     currLightData.triangleCDFStride = static_cast<int>(indices.size() / 3);

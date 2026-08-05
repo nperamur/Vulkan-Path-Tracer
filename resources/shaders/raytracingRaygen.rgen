@@ -184,7 +184,11 @@ vec3 sampleDirectionalLight(vec3 centerDir, float cosThetaMax, uint randState) {
     return normalize(tangent * localDir.x + bitangent * localDir.y + centerDir * localDir.z);
 }
 
-
+float getSolidAnglePDF(Light light, vec3 lightDirection, vec3 lightPosition, vec3 surfacePos, vec3 lightNormal) {
+    float pdfArea = 1 / light.lightArea;
+    float cosTheta = max(abs(dot(lightDirection, lightNormal)), 0.0001);
+    return pdfArea * pow(length(lightPosition - surfacePos), 2) / cosTheta;
+}
 
 vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirectionPDF, inout vec3 emissionColor, inout float tMax, inout int materialIndex)  {
     float lightCDFRand = randFloat(randState);
@@ -263,9 +267,7 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
     vec3 lightDirection = normalize(lightPosition - surfacePos);
     tMax = length(lightPosition - surfacePos);
     vec3 lightNormal = normalize(cross(edge1, edge2));
-    float pdfArea = 1 / light.lightArea;
-    float cosTheta = max(abs(dot(lightDirection, lightNormal)), 0.01);
-    float solidAnglePDF = pdfArea * pow(length(lightPosition - surfacePos), 2) / cosTheta;
+    float solidAnglePDF = getSolidAnglePDF(light, lightDirection, lightPosition, surfacePos, lightNormal);
     lightDirectionPDF = lightSelectionPDF * solidAnglePDF;
     emissionColor = materials.materialData[light.materialIndex].color.rgb * light.emissionFactor;
     materialIndex = light.materialIndex;
@@ -406,6 +408,17 @@ vec3 fresnelSchlick(vec3 normal, vec3 view, vec3 f0) {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - dot(normal, view), 0.0, 1.0), 5.0);
 }
 
+float getSolidAngleSum(vec3 surfacePos) {
+    float solidAngleSum = 0.0;
+    for (int i = 0; i < lightDataBuffer.lightCount; i++) {
+        float dist = length(surfacePos - lightDataBuffer.data[i].position);
+        solidAngleSum += sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
+    }
+    if (length(lightData.color) > 0) {
+        solidAngleSum += SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius);
+    }
+    return solidAngleSum;
+}
 
 vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir) {
     normal = normalize(normal);
@@ -413,8 +426,8 @@ vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 mic
     microfacetNormal = normalize(microfacetNormal);
     vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
     view = normalize(view);
-    return (sampleGGXNormalDistributionFunction(pow(material.roughness, 2), normal, microfacetNormal)
-            * getGGXGeometry(pow(material.roughness, 2), normal, view, lightDir) * fresnelSchlick(microfacetNormal, view, f0))
+    return (sampleGGXNormalDistributionFunction(material.roughness, normal, microfacetNormal)
+            * getGGXGeometry(material.roughness, normal, view, lightDir) * fresnelSchlick(microfacetNormal, view, f0))
             / (max((4.0 * clamp(dot(normal, lightDir), 0, 1)) * clamp(dot(normal, view), 0, 1), 0.0001));
 }
 
@@ -450,7 +463,7 @@ float getGGX_VNDF_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir)
     if (dot(view, h) <= 0.0)
         return 0.0;
 
-    float alpha = pow(material.roughness, 2);
+    float alpha = material.roughness;
     float D = sampleGGXNormalDistributionFunction(alpha, normal, h);
     float G1 = sampleGGXGeometry(alpha, normal, view);
 
@@ -478,9 +491,10 @@ void processBounce(
     vec3 emissionColor,
     float lightDirectionPDF,
     bool mis,
-    bool russianRoulette
+    bool russianRoulette,
+    inout float bsdfPDF
 ) {
-    vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, pow(material.roughness, 2), normal);
+    vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, material.roughness, normal);
     bool diffuseBounce = isDiffuseBounce(randState, microfacetNormal, -prevRayDir, material, surfaceColor);
 
     vec3 directBRDF = vec3(0.0);
@@ -501,23 +515,25 @@ void processBounce(
     directBRDF = getSpecularBRDF(material, surfaceColor, normal, directMicrofacetNormal, -prevRayDir, normalize(lightDir)) +
                     getDiffuseBRDF(surfaceColor) * (1.0 - fresnelSchlick(directMicrofacetNormal, -prevRayDir, f0)) * (1.0 - material.metalness);
 
+
+    float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
+    float pdfSpecular = getGGX_VNDF_PDF(material, normal, -prevRayDir, rayDir);
+
+    float specularProb = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir), 1.0, material.metalness);
+
+    float fullPdf = ((1.0 - specularProb) * pdfDiffuse) + (specularProb * pdfSpecular);
+    fullPdf = max(fullPdf, 1e-6);
     float misWeight = 1.0f;
     if (mis) {
-        float bsdfPDF = 1 / (2 * PI);
-        misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
+        misWeight = lightDirectionPDF / (fullPdf + lightDirectionPDF);
     }
+    bsdfPDF = fullPdf;
 
     if (shadowMiss) {
         directLight = directBRDF * max(0, dot(normal, normalize(lightDir))) * lightIntensity * emissionColor * misWeight / lightDirectionPDF;
     }
     if (dot(rayDir, normal) <= 0.0) { throughput = vec3(0.0f); return; }
-    float specularProb = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir), 1.0, material.metalness);
 
-    float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
-    float pdfSpecular = getGGX_VNDF_PDF(material, normal, -prevRayDir, rayDir);
-
-    float fullPdf = ((1.0 - specularProb) * pdfDiffuse) + (specularProb * pdfSpecular);
-    fullPdf = max(fullPdf, 1e-6);
     if (material.roughness == 0 && !diffuseBounce)  {
         throughput *= (fresnelSchlick(normal, -prevRayDir, f0))
                         / specularProb;
@@ -658,6 +674,8 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          float lightDirectionPDF;
          int lightMaterialIndex;
          float lightDist = -1.0f;
+         float bsdfPDF = 0.0f;
+
          vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
          if (lightDirectionPDF <= 0) continue;
          traceRayEXT(
@@ -684,7 +702,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          }
          processBounce(normal, material, getSurfaceColor(material, vec2(u, v), primitiveIndex), prevRayDir, randState,
                          rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false, false);
+                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false, false, bsdfPDF);
 
          if (dot(rayDir, normal) <= 0.0) throughput = vec3(0.0f);
 
@@ -713,6 +731,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              primitiveIndex = rayPayload.primitiveIndex;
              normal = calculateFaceNormal(rayPayload.primitiveIndex, rayDir, material);
              uint materialIndex = rayPayload.materialIndex;
+             vec3 prevOrigin = origin.xyz;
              origin = vec4(origin.xyz + rayDir * rayPayload.distance + normal * 0.0001, 1);
              vec2 uv = rayPayload.uv;
              if (INTERPOLATED_NORMALS) {
@@ -734,10 +753,13 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              if (material.lightIndex >= 0) {
                  Light light = lightDataBuffer.data[material.lightIndex];
-                 float bsdfPDF = 1 / (2 * PI);
                  float misWeight = 1.0f;
+                 float dist = length(prevOrigin - light.position);
+                 float lightSelectionPDF = sampleBoundingSphere(light.radius, dist) / getSolidAngleSum(prevOrigin);
+                 float solidAnglePDF = getSolidAnglePDF(light, prevRayDir, origin.xyz, prevOrigin, normal);
+                 float lightPDF = lightSelectionPDF * solidAnglePDF;
                  if (mis) {
-                    misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                    misWeight = bsdfPDF / (bsdfPDF + lightPDF);
                  }
                  accumulatedLight += lightIntensity * light.emissionFactor * materials.materialData[light.materialIndex].color.rgb * throughput * misWeight;
                  break;
@@ -748,9 +770,10 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                   float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
                   float misWeight = 1.0f;
                   if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
-                      float bsdfPDF = 1 / (2 * PI);
+                      float directionalLightSolidAngleWeight = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius) / getSolidAngleSum(prevOrigin);
+                      float lightPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * directionalLightSolidAngleWeight;
                       if (mis) {
-                        misWeight = bsdfPDF / (bsdfPDF + lightDirectionPDF);
+                        misWeight = bsdfPDF / (bsdfPDF + lightPDF);
                       }
                       accumulatedLight += lightIntensity * lightData.color.rgb * throughput * misWeight;
                   } else {
@@ -761,7 +784,6 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              mis = material.roughness != 0;
              int lightMaterialIndex;
-             float lightDirectionPDF;
              lightDist = -1.0f;
              vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
 
@@ -787,7 +809,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              processBounce(normal, material, getSurfaceColor(material, uv, primitiveIndex), prevRayDir, randState,
                  material.roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, i >= 2);
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, i >= 2, bsdfPDF);
 
              if (throughput == vec3(0)) {
                 break;
