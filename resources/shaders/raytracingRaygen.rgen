@@ -516,17 +516,22 @@ void processBounce(
                     getDiffuseBRDF(surfaceColor) * (1.0 - fresnelSchlick(directMicrofacetNormal, -prevRayDir, f0)) * (1.0 - material.metalness);
 
 
-    float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
-    float pdfSpecular = getGGX_VNDF_PDF(material, normal, -prevRayDir, rayDir);
+
 
     float specularProb = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir), 1.0, material.metalness);
 
-    float fullPdf = ((1.0 - specularProb) * pdfDiffuse) + (specularProb * pdfSpecular);
-    fullPdf = max(fullPdf, 1e-6);
+
     float misWeight = 1.0f;
     if (mis) {
-        misWeight = lightDirectionPDF / (fullPdf + lightDirectionPDF);
+        float pdfBSDFDiffuseToLight  = max(dot(normal, lightDir), 0.0) / PI;
+        float pdfBSDFSpecularToLight = getGGX_VNDF_PDF(material, normal, -prevRayDir, lightDir);
+        bsdfPDF = ((1.0 - specularProb) * pdfBSDFDiffuseToLight) + (specularProb * pdfBSDFSpecularToLight);
+        misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
     }
+    float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
+    float pdfSpecular = getGGX_VNDF_PDF(material, normal, -prevRayDir, rayDir);
+    float fullPdf = ((1.0 - specularProb) * pdfDiffuse) + (specularProb * pdfSpecular);
+    fullPdf = max(fullPdf, 1e-6);
     bsdfPDF = fullPdf;
 
     if (shadowMiss) {
@@ -702,7 +707,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          }
          processBounce(normal, material, getSurfaceColor(material, vec2(u, v), primitiveIndex), prevRayDir, randState,
                          rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, false, false, bsdfPDF);
+                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, false, bsdfPDF);
 
          if (dot(rayDir, normal) <= 0.0) throughput = vec3(0.0f);
 
@@ -785,7 +790,6 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              mis = material.roughness != 0;
              int lightMaterialIndex;
              lightDist = -1.0f;
-             bool backFacing = false;
              vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
 
              if (lightDirectionPDF <= 0) break;
