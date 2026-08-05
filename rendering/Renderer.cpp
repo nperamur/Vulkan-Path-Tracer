@@ -51,7 +51,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
 
 
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
-        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::forwardPass) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light),  i);
+        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::forwardPass) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light), i);
     }
     //raytracing
     size_t numBaseColorTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::baseColor).size();

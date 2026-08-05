@@ -22,7 +22,7 @@ std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii:
     if (mappedData.error() != fastgltf::Error::None) {
         throw new std::exception("Cannot load gltf file");
     }
-    fastgltf::Parser parser(fastgltf::Extensions::KHR_materials_specular | fastgltf::Extensions::KHR_materials_ior);
+    fastgltf::Parser parser(fastgltf::Extensions::KHR_materials_specular | fastgltf::Extensions::KHR_materials_ior | fastgltf::Extensions::KHR_materials_emissive_strength);
     auto asset = parser.loadGltf(mappedData.get(), gltfPath.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages);
     if (asset.error() != fastgltf::Error::None) {
         std::string msg = std::string(fastgltf::getErrorMessage(asset.error()));

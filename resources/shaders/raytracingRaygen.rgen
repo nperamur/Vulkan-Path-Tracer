@@ -198,40 +198,40 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
     int lightIndex = 0;
     float lightSelectionPDF = 0;
 
-    float solidAngleSum = 0;
+    float lightWeightSum = 0;
     for (int i = 0; i < lightDataBuffer.lightCount; i++) {
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
         float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
-        solidAngleSum += solidAngle;
+        lightWeightSum += solidAngle * length(lightDataBuffer.data[i].emissionFactor);
     }
     float directionalLightSolidAngle = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius);
     if (includesDirectionalLight) {
-        solidAngleSum += directionalLightSolidAngle;
+        lightWeightSum += directionalLightSolidAngle;
     }
 
     float lightSelectionCDFWeightCounter = 0;
-    float chosenSolidAngle = -1;
+    float chosenWeight = -1;
     for (int i = 0; i < lightDataBuffer.lightCount; i++) {
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
         float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
-        float cdfWeight = lightSelectionCDFWeightCounter + solidAngle / solidAngleSum;
-        if (cdfWeight >= lightCDFRand && chosenSolidAngle < 0) {
+        float cdfWeight = lightSelectionCDFWeightCounter + solidAngle * length(lightDataBuffer.data[i].emissionFactor) / lightWeightSum;
+        if (cdfWeight >= lightCDFRand && chosenWeight < 0) {
             lightIndex = i;
-            chosenSolidAngle = solidAngle / solidAngleSum;
+            chosenWeight = solidAngle * length(lightDataBuffer.data[i].emissionFactor) / lightWeightSum;
         }
         lightSelectionCDFWeightCounter = cdfWeight;
     }
 
     if (includesDirectionalLight) {
-        float normalizedDirectionalSolidAngle = directionalLightSolidAngle / solidAngleSum;
+        float normalizedDirectionalSolidAngle = directionalLightSolidAngle / lightWeightSum;
         float cdfWeight = lightSelectionCDFWeightCounter + normalizedDirectionalSolidAngle;
-        if (cdfWeight >= lightCDFRand && chosenSolidAngle < 0) {
+        if (cdfWeight >= lightCDFRand && chosenWeight < 0) {
             lightIndex = -1;
-            chosenSolidAngle = directionalLightSolidAngle / solidAngleSum;
+            chosenWeight = directionalLightSolidAngle / lightWeightSum;
         }
         lightSelectionCDFWeightCounter = cdfWeight;
     }
-    lightSelectionPDF = chosenSolidAngle;
+    lightSelectionPDF = chosenWeight;
     if (lightIndex == -1) {
         emissionColor = SUN_RADIENCE * lightData.color.rgb;
         materialIndex = -1;
@@ -408,16 +408,16 @@ vec3 fresnelSchlick(vec3 normal, vec3 view, vec3 f0) {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - dot(normal, view), 0.0, 1.0), 5.0);
 }
 
-float getSolidAngleSum(vec3 surfacePos) {
-    float solidAngleSum = 0.0;
+float getLightSelectionWeightSum(vec3 surfacePos) {
+    float lightWeightSum = 0.0;
     for (int i = 0; i < lightDataBuffer.lightCount; i++) {
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
-        solidAngleSum += sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
+        lightWeightSum += sampleBoundingSphere(lightDataBuffer.data[i].radius, dist) * length(lightDataBuffer.data[i].emissionFactor);
     }
     if (length(lightData.color) > 0) {
-        solidAngleSum += SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius);
+        lightWeightSum += SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius);
     }
-    return solidAngleSum;
+    return lightWeightSum;
 }
 
 vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir) {
@@ -755,7 +755,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                  Light light = lightDataBuffer.data[material.lightIndex];
                  float misWeight = 1.0f;
                  float dist = length(prevOrigin - light.position);
-                 float lightSelectionPDF = sampleBoundingSphere(light.radius, dist) / getSolidAngleSum(prevOrigin);
+                 float lightSelectionPDF = sampleBoundingSphere(light.radius, dist) * length(light.emissionFactor) / getLightSelectionWeightSum(prevOrigin);
                  float solidAnglePDF = getSolidAnglePDF(light, prevRayDir, origin.xyz, prevOrigin, normal);
                  float lightPDF = lightSelectionPDF * solidAnglePDF;
                  if (mis) {
@@ -770,7 +770,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                   float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
                   float misWeight = 1.0f;
                   if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
-                      float directionalLightSolidAngleWeight = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius) / getSolidAngleSum(prevOrigin);
+                      float directionalLightSolidAngleWeight = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius) / getLightSelectionWeightSum(prevOrigin);
                       float lightPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * directionalLightSolidAngleWeight;
                       if (mis) {
                         misWeight = bsdfPDF / (bsdfPDF + lightPDF);
@@ -785,12 +785,13 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              mis = material.roughness != 0;
              int lightMaterialIndex;
              lightDist = -1.0f;
+             bool backFacing = false;
              vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
 
              if (lightDirectionPDF <= 0) break;
 
 
-            if (material.roughness != 0) {
+            if (mis) {
                 traceRayEXT(
                      topLevelAS,
                      gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
@@ -809,7 +810,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
 
              processBounce(normal, material, getSurfaceColor(material, uv, primitiveIndex), prevRayDir, randState,
                  material.roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, i >= 2, bsdfPDF);
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, i >= 2, bsdfPDF);
 
              if (throughput == vec3(0)) {
                 break;
