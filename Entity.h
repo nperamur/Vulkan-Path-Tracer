@@ -19,10 +19,13 @@ struct alignas(16) Material {
     uint64_t textureCoordsAddress;
     float roughness = 1.0f;
     float metalness = 0.0f;
-    float reflectivity = 0.0f;
+    float reflectivity = 0.04f;
     float albedoFactor = 1.0f;
+    float transmissionFactor = 0.0f;
+    float ior = 1.5f;
     int lightIndex = -1;
-    int textureIndex = -1;
+    int baseColorTextureIndex = -1;
+    int normalMapTextureIndex = -1;
 };
 
 class Entity {

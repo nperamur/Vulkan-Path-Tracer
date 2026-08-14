@@ -33,6 +33,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> imageViewManager.emplace(allocator, device);
     this -> textureBufferManager.emplace(allocator, device);
     textureBufferManager -> registerTextureBuffer(TextureBuffers::baseColor);
+    textureBufferManager -> registerTextureBuffer(TextureBuffers::normalMap);
     this -> barrierManager.emplace();
     //light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
     light.position = glm::vec4(500.0, 860.0, 300.0, 1.0);
@@ -55,8 +56,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     }
     //raytracing
     size_t numBaseColorTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::baseColor).size();
+    size_t numNormalMapTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::normalMap).size();
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5, .textureBuffersInfo = {TextureBufferInfo(numBaseColorTextureViews > 0 ? numBaseColorTextureViews : 1)}},
+        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5, .textureBuffersInfo = {TextureBufferInfo(numBaseColorTextureViews > 0 ? numBaseColorTextureViews : 1), TextureBufferInfo(numNormalMapTextureViews > 0 ? numNormalMapTextureViews : 1)}},
         .dynamicData = {.numUBOs = 2}
     };
     materials = sceneManager -> getAllMaterials();
@@ -85,13 +87,19 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
         if (numBaseColorTextureViews > 0) {
             rtShader->setTextureBuffer(RTShaderSlots::baseColorTextures, textureBufferManager -> getTextureViews(TextureBuffers::baseColor), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+            rtShader->setTextureBuffer(RTShaderSlots::normalMapTextures, textureBufferManager -> getTextureViews(TextureBuffers::normalMap), vk::ImageLayout::eShaderReadOnlyOptimal, i);
         }
-        if (!triangleCDFBuffer.empty()) {
-            rtShader->setStorageBuffer(RTShaderSlots::triangleCdfBuffer, triangleCDFBuffer.data(), triangleCDFBuffer.size() * sizeof(float), i);
-            rtShader->setStorageBuffer(RTShaderSlots::lightCdfBuffer, lightCDFBuffer.data(), lightCDFBuffer.size() * sizeof(float), i);
-            rtShader->setStorageBuffer(RTShaderSlots::lightDataBuffer, lightBufferPointer, lightBufferSize, i);
-            rtShader->setStorageBuffer(RTShaderSlots::emissiveVerticesBuffer, emissiveVerticesBuffer.data(), emissiveVerticesBuffer.size() * sizeof(float), i);
-        }
+        static const std::vector<float> dummyBuffer = {0.0f};
+
+        std::vector<float> triangleCDFToUse = !triangleCDFBuffer.empty() ? triangleCDFBuffer : dummyBuffer;
+        std::vector<float> lightCDFToUse = !lightCDFBuffer.empty() ? lightCDFBuffer : dummyBuffer;
+        std::vector<float> emissiveVerticesToUse = !emissiveVerticesBuffer.empty() ? emissiveVerticesBuffer : dummyBuffer;
+
+        rtShader->setStorageBuffer(RTShaderSlots::triangleCdfBuffer, triangleCDFToUse.data(), triangleCDFToUse.size() * sizeof(float), i);
+        rtShader->setStorageBuffer(RTShaderSlots::lightCdfBuffer, lightCDFToUse.data(), lightCDFToUse.size() * sizeof(float), i);
+        rtShader->setStorageBuffer(RTShaderSlots::emissiveVerticesBuffer, emissiveVerticesToUse.data(), emissiveVerticesToUse.size() * sizeof(float), i);
+
+        rtShader->setStorageBuffer(RTShaderSlots::lightDataBuffer, lightBufferPointer, lightBufferSize, i);
 
     }
     free(lightBufferPointer);
