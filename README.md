@@ -24,10 +24,11 @@ Renders demonstrating these additions are shown below.
     <td align="center"><b>Textured Sponza</b></td>
   </tr>
   <tr>
-    <td><img width="400" alt="Screenshot 2026-06-28 235308" src="https://github.com/user-attachments/assets/5d405821-ca61-4eba-bfe8-d86695d8c78d" /></td>
+    <td><img width="400"  alt="Screenshot 2026-06-28 235308" src="https://github.com/user-attachments/assets/f63f585f-ae94-4e88-a200-dc17693148b5" /></td>
     <td><img height="400" alt="Screenshot 2026-07-25 003523" src="https://github.com/user-attachments/assets/69e9ba53-dcd0-42ed-bef2-e29a1561195f" /></td>
   </tr>
 </table>
+
 
 
 **Importance Sampling**: We use the following techniques to increase the convergence speed of the render.
