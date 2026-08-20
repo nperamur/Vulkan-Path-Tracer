@@ -34,6 +34,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     this -> textureBufferManager.emplace(allocator, device);
     textureBufferManager -> registerTextureBuffer(TextureBuffers::baseColor);
     textureBufferManager -> registerTextureBuffer(TextureBuffers::normalMap);
+    textureBufferManager -> registerTextureBuffer(TextureBuffers::metallicRoughnessMap);
     this -> barrierManager.emplace();
     //light.position = glm::vec4(500.0, 800.0, 300.0, 1.0);
     light.position = glm::vec4(500.0, 860.0, 300.0, 1.0);
@@ -57,8 +58,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     //raytracing
     size_t numBaseColorTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::baseColor).size();
     size_t numNormalMapTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::normalMap).size();
+    size_t numMetallicRoughnessMapTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::metallicRoughnessMap).size();
     DescriptorsInfo raytracingDescriptorsInfo = {
-        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5, .textureBuffersInfo = {TextureBufferInfo(numBaseColorTextureViews > 0 ? numBaseColorTextureViews : 1), TextureBufferInfo(numNormalMapTextureViews > 0 ? numNormalMapTextureViews : 1)}},
+        .staticData = {.numTextureSamplers = 3, .numAccelerationStructures = 1, .numStorageImages = 1, .numStorageBuffers = 5, .textureBuffersInfo = {TextureBufferInfo(numBaseColorTextureViews > 0 ? numBaseColorTextureViews : 1), TextureBufferInfo(numNormalMapTextureViews > 0 ? numNormalMapTextureViews : 1), TextureBufferInfo(numMetallicRoughnessMapTextureViews > 0 ? numMetallicRoughnessMapTextureViews : 1)}},
         .dynamicData = {.numUBOs = 2}
     };
     materials = sceneManager -> getAllMaterials();
@@ -88,6 +90,8 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         if (numBaseColorTextureViews > 0) {
             rtShader->setTextureBuffer(RTShaderSlots::baseColorTextures, textureBufferManager -> getTextureViews(TextureBuffers::baseColor), vk::ImageLayout::eShaderReadOnlyOptimal, i);
             rtShader->setTextureBuffer(RTShaderSlots::normalMapTextures, textureBufferManager -> getTextureViews(TextureBuffers::normalMap), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+            rtShader->setTextureBuffer(RTShaderSlots::metallicRoughnessTextures, textureBufferManager -> getTextureViews(TextureBuffers::metallicRoughnessMap), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+
         }
         static const std::vector<float> dummyBuffer = {0.0f};
 

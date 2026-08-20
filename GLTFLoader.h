@@ -29,7 +29,7 @@ class GLTFLoader {
         MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData);
 
 
-    void uploadTexture(fastgltf::Image image, std::string textureBuffer, fastgltf::Asset &gltf, std::string name, vk::raii::Device &device, int* textureIndexPtr);
+    void uploadTexture(fastgltf::Image image, std::string textureBuffer, fastgltf::Asset &gltf, std::string name, vk::raii::Device &device, int* textureIndexPtr, VkFormat format);
 };
 
 

@@ -43,6 +43,7 @@ namespace RenderPassImages {
 namespace TextureBuffers {
     ID(baseColor, "baseColor")
     ID(normalMap, "normalMap")
+    ID(metallicRoughnessMap, "metallicRoughnessMap")
 }
 
 struct InverseViewProj {

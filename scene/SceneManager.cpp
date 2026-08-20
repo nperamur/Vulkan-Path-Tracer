@@ -44,7 +44,7 @@
 
 
 SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader) {
-
+    //
     WorldObject sponza;
     sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
     sponza.setScale(glm::vec3(4.0f));
@@ -53,13 +53,13 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     //
     //
     // WorldObject cornellBox;
-    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 1.0f, emissiveVertices, lightData));
+    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 2.5f, emissiveVertices, lightData));
     // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBox));
 
     // WorldObject cornellBoxSpheres;
-    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.1f, emissiveVertices, lightData));
+    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.25f, emissiveVertices, lightData));
     // cornellBoxSpheres.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBoxSpheres.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));

@@ -9,7 +9,8 @@ layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
 layout(set = 0, binding = 2) uniform sampler2D visibilityBuffer;
 layout(set = 0, binding = 4) uniform sampler2D[] baseColorTextures;
 layout(set = 0, binding = 5) uniform sampler2D[] normalMapTextures;
-layout(set = 0, binding = 6, rgba32f) uniform image2D storageImage;
+layout(set = 0, binding = 6) uniform sampler2D[] metallicRoughnessMapTextures;
+layout(set = 0, binding = 7, rgba32f) uniform image2D storageImage;
 layout(set = 0, binding = 3) uniform sampler2D normalBuffer;
 struct RayPayload {
     float distance;
@@ -44,7 +45,7 @@ layout(buffer_reference, std430) buffer NormalBuffer {
 
 //TODO: if ref address is 0 it doesnt exist otherwise it exists
 layout(buffer_reference, std430) buffer TextureCoordsBuffer {
-    float data[];
+    vec2 data[];
 };
 
 uint nextRand(inout uint randState) {
@@ -94,6 +95,7 @@ struct Material {
     int lightIndex;
     int baseColorIndex;
     int normalMapIndex;
+    int metallicRoughnessMapIndex;
 };
 
 struct Light {
@@ -107,24 +109,24 @@ struct Light {
 };
 
 
-layout(std430, set = 0, binding = 7) buffer Materials {
+layout(std430, set = 0, binding = 8) buffer Materials {
     Material materialData[];
 } materials;
 
-layout(std430, set = 0, binding = 8) buffer TriangleCDFBuffer {
+layout(std430, set = 0, binding = 9) buffer TriangleCDFBuffer {
     float data[];
 } triangleCDF;
 
-layout(std430, set = 0, binding = 9) buffer LightCDFBuffer {
+layout(std430, set = 0, binding = 10) buffer LightCDFBuffer {
     float data[];
 } lightCDF;
 
-layout(std430, set = 0, binding = 10) buffer LightDataBuffer {
+layout(std430, set = 0, binding = 11) buffer LightDataBuffer {
     uint lightCount;
     Light data[];
 } lightDataBuffer;
 
-layout(std430, set = 0, binding = 11) buffer EmissiveVerticesBuffer {
+layout(std430, set = 0, binding = 12) buffer EmissiveVerticesBuffer {
     float data[];
 } emissiveVertices;
 
@@ -218,10 +220,11 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
     for (int i = 0; i < lightDataBuffer.lightCount; i++) {
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
         float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
-        float cdfWeight = lightSelectionCDFWeightCounter + solidAngle * length(lightDataBuffer.data[i].emissionFactor) / lightWeightSum;
+        float emissionFactorLength = length(lightDataBuffer.data[i].emissionFactor);
+        float cdfWeight = (lightSelectionCDFWeightCounter + solidAngle * emissionFactorLength) / lightWeightSum;
         if (cdfWeight >= lightCDFRand && chosenWeight < 0) {
             lightIndex = i;
-            chosenWeight = solidAngle * length(lightDataBuffer.data[i].emissionFactor) / lightWeightSum;
+            chosenWeight = solidAngle * emissionFactorLength / lightWeightSum;
         }
         lightSelectionCDFWeightCounter = cdfWeight;
     }
@@ -299,26 +302,48 @@ vec3 getBurleyDiffuse(vec3 surfaceColor, float roughness, vec3 normal, vec3 view
     return surfaceColor * Fd / PI;
 }
 
-vec3 getSurfaceColor(Material material, vec2 uv, uint primitiveIndex) {
-    if (material.baseColorIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
-        return material.color.rgb * material.albedoFactor;
-    }
 
+vec2 getTexCoords(Material material, vec2 uv, uint primitiveIndex, uint i0, uint i1, uint i2) {
     TextureCoordsBuffer textureCoords = TextureCoordsBuffer(material.textureCoordsAddress);
-    IndexBuffer indices = IndexBuffer(material.indexAddress);
-    uint i0 = indices.data[primitiveIndex * 3 + 0];
-    uint i1 = indices.data[primitiveIndex * 3 + 1];
-    uint i2 = indices.data[primitiveIndex * 3 + 2];
-    vec2 t0 = vec2(textureCoords.data[i0*2+0], textureCoords.data[i0*2+1]);
-    vec2 t1 = vec2(textureCoords.data[i1*2+0], textureCoords.data[i1*2+1]);
-    vec2 t2 = vec2(textureCoords.data[i2*2+0], textureCoords.data[i2*2+1]);
+    vec2 t0 = textureCoords.data[i0];
+    vec2 t1 = textureCoords.data[i1];
+    vec2 t2 = textureCoords.data[i2];
 
     float x = 1.0f - uv.x - uv.y;
 
     vec2 texCoords = t0 * x + t1 * uv.x + t2 * uv.y;
-    vec3 color = texture(baseColorTextures[nonuniformEXT(material.baseColorIndex)], texCoords).rgb;
+    return texCoords;
+}
+
+vec3 getSurfaceColor(Material material, vec2 texCoords, uint primitiveIndex) {
+    if (material.baseColorIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
+        return material.color.rgb * material.albedoFactor;
+    }
+
+    vec3 color = textureLod(
+        baseColorTextures[nonuniformEXT(material.baseColorIndex)],
+        texCoords,
+        0.0
+    ).rgb;
     return color * material.albedoFactor;
 
+}
+
+void applyMetallicRoughness(Material material, vec2 texCoords, uint primitiveIndex, inout float roughness, inout float metalness, float mipLevel) {
+    if (material.metallicRoughnessMapIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
+        roughness = material.roughness;
+        metalness = material.metalness;
+        return;
+    }
+
+    vec3 metallicRoughness =
+    textureLod(
+        metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)],
+        texCoords,
+        mipLevel
+    ).rgb;
+    roughness = clamp(metallicRoughness.g, 0.0f, 1.0f);
+    metalness = clamp(metallicRoughness.b, 0.0f, 1.0f);
 }
 
 void transformNormal(Material material, inout vec3 normal, vec2 uv, uint primitiveIndex, vec3 rayDir) {
@@ -332,9 +357,9 @@ void transformNormal(Material material, inout vec3 normal, vec2 uv, uint primiti
     uint i0 = indices.data[primitiveIndex * 3 + 0];
     uint i1 = indices.data[primitiveIndex * 3 + 1];
     uint i2 = indices.data[primitiveIndex * 3 + 2];
-    vec2 t0 = vec2(textureCoords.data[i0*2+0], textureCoords.data[i0*2+1]);
-    vec2 t1 = vec2(textureCoords.data[i1*2+0], textureCoords.data[i1*2+1]);
-    vec2 t2 = vec2(textureCoords.data[i2*2+0], textureCoords.data[i2*2+1]);
+    vec2 t0 = textureCoords.data[i0];
+    vec2 t1 = textureCoords.data[i1];
+    vec2 t2 = textureCoords.data[i2];
     vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
     vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
     vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
@@ -368,16 +393,15 @@ void transformNormal(Material material, inout vec3 normal, vec2 uv, uint primiti
     mat3 tbn = mat3(tangent, bitangent, normal);
     normalSample = tbn * normalSample;
     normal = normalize(normalSample);
+    vec3 reflected = reflect(rayDir, normal);
     normal = normalize(faceforward(normal, rayDir, normal));
 
-    vec3 reflected = reflect(rayDir, normal);
 
     float belowPlane = dot(reflected, origNormal);
     if (belowPlane < 0.0) {
         vec3 correctedReflected = normalize(reflected - origNormal * belowPlane);
         normal = normalize(-rayDir + correctedReflected);
     }
-
 
 }
 
@@ -497,24 +521,24 @@ float getLightSelectionWeightSum(vec3 surfacePos) {
     return lightWeightSum;
 }
 
-vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR) {
+vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR, float roughness, float metalness) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
-    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
+    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
     view = normalize(view);
-    return (sampleGGXNormalDistributionFunction(material.roughness, normal, microfacetNormal)
-            * getGGXGeometry(material.roughness, normal, view, lightDir) * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, view, f0)))
+    return (sampleGGXNormalDistributionFunction(roughness, normal, microfacetNormal)
+            * getGGXGeometry(roughness, normal, view, lightDir) * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, view, f0)))
             / (max((4.0 * clamp(dot(normal, lightDir), 0, 1)) * clamp(dot(normal, view), 0, 1), 0.0001));
 }
 
-vec3 getBTDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta) {
+vec3 getBTDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta, float roughness, float metalness) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
     view = normalize(view);
 
-    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
+    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
 
     float LdotH = abs(dot(lightDir, microfacetNormal));
     float VdotH = abs(dot(view, microfacetNormal));
@@ -522,27 +546,27 @@ vec3 getBTDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetN
     float Ht = n_i * VdotH + n_t * LdotH;
     if (Ht <= 0.0) return vec3(0.0);
 
-    float D = sampleGGXNormalDistributionFunction(material.roughness, normal, microfacetNormal);
-    float G = getGGXGeometry(material.roughness, normal, view, lightDir);
+    float D = sampleGGXNormalDistributionFunction(roughness, normal, microfacetNormal);
+    float G = getGGXGeometry(roughness, normal, view, lightDir);
     vec3 F = fresnelSchlick(microfacetNormal, view, f0);
 
     return (D * G * (1.0 - F) * VdotH * LdotH * pow(n_t, 2)) / (pow(Ht, 2) * max(abs(dot(view, normal)), 1e-4) * abs(dot(normal, lightDir)));
 }
 
-float getFresnelValue(Material material, vec3 surfaceColor, vec3 normal, vec3 incomingLight) {
-    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
+float getFresnelValue(Material material, vec3 surfaceColor, vec3 normal, vec3 incomingLight, float metalness) {
+    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
     vec3 fresnel = fresnelSchlick(normal, incomingLight, f0);
     float fresnelValue = clamp((fresnel.x + fresnel.y + fresnel.z) / 3.0, 0.0, 1.0);
     return fresnelValue;
 }
 
 bool isDiffuseBounce(inout uint randState, vec3 microfacetNormal, vec3 incomingLight, Material material, vec3 surfaceColor) {
-    float fresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, incomingLight), 1.0, material.metalness);
+    float fresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, incomingLight, material.metalness), 1.0, material.metalness);
     float rand = randFloat(randState);
     return (rand >= fresnelValue);
 }
 
-float getGGX_VNDF_REFLECTION_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir, vec3 halfVector)
+float getGGX_VNDF_REFLECTION_PDF(float roughness, vec3 normal, vec3 view, vec3 rayDir, vec3 halfVector)
 {
     normal = normalize(normal);
     view = normalize(view);
@@ -556,14 +580,15 @@ float getGGX_VNDF_REFLECTION_PDF(Material material, vec3 normal, vec3 view, vec3
     if (dot(view, halfVector) <= 0.0)
         return 0.0;
 
-    float alpha = material.roughness;
+    float alpha = roughness;
     float D = sampleGGXNormalDistributionFunction(alpha, normal, halfVector);
-    float G1 = sampleGGXGeometry(alpha, normal, view);
+    //float G1 = sampleGGXGeometry(alpha, normal, view);
 
-    return D * G1 / max(4.0 * NdotV, 1e-4);
+    //return D * G1 / max(4.0 * NdotV, 1e-4);
+    return D / (2.0 * (NdotV + sqrt(alpha * alpha + (1.0 - alpha * alpha) * NdotV * NdotV)));
 }
 
-float getGGX_TRANSMISSION_PDF(Material material, vec3 normal, vec3 view, vec3 rayDir, vec3 halfVector, float n_t, float n_i)
+float getGGX_TRANSMISSION_PDF(float roughness, vec3 normal, vec3 view, vec3 rayDir, vec3 halfVector, float n_t, float n_i)
 {
     normal = normalize(normal);
     view = normalize(view);
@@ -579,8 +604,8 @@ float getGGX_TRANSMISSION_PDF(Material material, vec3 normal, vec3 view, vec3 ra
     float Ht = n_i * VdotH + n_t * LdotH;
     if (Ht <= 0.0) return 0.0;
 
-    float D = sampleGGXNormalDistributionFunction(material.roughness, normal, halfVector);
-    float G1 = sampleGGXGeometry(material.roughness, normal, view);
+    float D = sampleGGXNormalDistributionFunction(roughness, normal, halfVector);
+    float G1 = sampleGGXGeometry(roughness, normal, view);
 
     float pVisible = D * G1 * VdotH / max(NdotV, 1e-6);
     float jacobian = (n_t * n_t) * LdotH / max(Ht * Ht, 1e-12);
@@ -594,14 +619,19 @@ const int NUM_MAX_BOUNCES = 12;
 const float lightIntensity = 45;
 int interiorList[NUM_MAX_BOUNCES];
 int interiorListSize = 0;
+
+vec3 interiorPoints[NUM_MAX_BOUNCES];
+
 const vec3 skyColor = vec3(0.4, 0.45, 0.9);
-const float SKY_RADIENCE = 5.0f;
+const float SKY_RADIENCE = 1.0f;
+const float SKY_MULTIPLIER = 8.0f;
 //const vec3 skyColor = vec3(0, 0, 0);
 
 
-void pushId(int materialId) {
+void pushId(int materialId, vec3 position) {
     if (interiorListSize >= NUM_MAX_BOUNCES) return;
     interiorList[interiorListSize] = materialId;
+    interiorPoints[interiorListSize] = position;
     interiorListSize++;
 }
 
@@ -614,6 +644,11 @@ int findId(int materialId) {
     return -1;
 }
 
+vec3 peekPoint() {
+    if (interiorListSize == 0) return vec3(-1);
+    return interiorPoints[interiorListSize - 1];
+}
+
 int peekId() {
     if (interiorListSize == 0) return -1;
     return interiorList[interiorListSize - 1];
@@ -622,6 +657,7 @@ int peekId() {
 void clearInteriorList() {
     for (int i = 0; i < interiorListSize; i++) {
         interiorList[i] = 0;
+        interiorPoints[i] = vec3(0.0f);
     }
     interiorListSize = 0;
 }
@@ -629,10 +665,12 @@ void clearInteriorList() {
 void deleteId(int materialId) {
     if (interiorListSize == 0) return;
     int tempList[NUM_MAX_BOUNCES];
+    vec3 tempPoints[NUM_MAX_BOUNCES];
     int tempListSize = 0;
     for (int i = 0; i < interiorListSize; i++) {
         if (interiorList[i] != materialId) {
             tempList[tempListSize] = interiorList[i];
+            tempPoints[tempListSize] = interiorPoints[i];
             tempListSize++;
         }
     }
@@ -640,6 +678,7 @@ void deleteId(int materialId) {
     interiorListSize = tempListSize;
     for (int i = 0; i < interiorListSize; i++) {
         interiorList[i] = tempList[i];
+        interiorPoints[i] = tempPoints[i];
     }
 
 }
@@ -647,6 +686,7 @@ void deleteId(int materialId) {
 
 void processBounce(
     vec3 normal,
+    vec3 origin,
     Material material,
     int materialIndex,
     vec3 surfaceColor,
@@ -661,11 +701,13 @@ void processBounce(
     float lightDirectionPDF,
     bool mis,
     bool russianRoulette,
-    inout float bsdfPDF
+    inout float bsdfPDF,
+    float roughness,
+    float metalness
 ) {
-    vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, material.roughness, normal);
+    vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, roughness, normal);
     microfacetNormal = faceforward(microfacetNormal, prevRayDir, normal);
-    float fresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir), 1.0, material.metalness);
+    float fresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir, metalness), 1.0, metalness);
     float rand = randFloat(randState);
     bool reflectionBounce = (rand <= fresnelValue);
     bool transmissionBounce = false;
@@ -683,9 +725,10 @@ void processBounce(
     if (findId(materialIndex) < 0) {
         entering = true;
     }
+    vec3 firstPoint = peekPoint();
     deleteId(materialIndex);
     int outerId = peekId();
-    if (!entering) pushId(materialIndex);
+    if (!entering) pushId(materialIndex, origin);
     float outerIor = outerId < 0 ? 1.0 : materials.materialData[outerId].ior;
 
     float n_i = entering ? outerIor : material.ior;
@@ -714,7 +757,7 @@ void processBounce(
     } else {
         if (material.transmissionFactor > 0) {
              if (findId(materialIndex) < 0) {
-                pushId(materialIndex);
+                pushId(materialIndex, origin);
              } else {
                 deleteId(materialIndex);
              }
@@ -728,37 +771,37 @@ void processBounce(
 
     vec3 directHalfVector = normalize(-prevRayDir + normalize(lightDir));
     vec3 directTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * lightDir));
-    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, material.metalness);
+    vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
     vec3 directFresnel = (fresnelSchlick(directHalfVector, -prevRayDir, f0));
 
 
-    float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, -prevRayDir), 1.0, material.metalness);
-    float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, -prevRayDir), 1.0, material.metalness);
+    float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, -prevRayDir, metalness), 1.0, metalness);
+    float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
     vec3 nee_refracted = refract(prevRayDir, directTransmissionHalfVector, eta);
     bool neeTIR = material.transmissionFactor > 0 && (dot(nee_refracted, nee_refracted) < 1e-6);
 
-    directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeTIR) * max(0, dot(normal, normalize(lightDir)))
-               + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, material.roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directFresnel) * (1.0 - material.metalness) * (neeTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
-               + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta) * (1.0 - material.metalness) * material.transmissionFactor * (neeTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
+    directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeTIR, roughness, metalness) * max(0, dot(normal, normalize(lightDir)))
+               + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directFresnel) * (1.0 - metalness) * (neeTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
+               + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * (neeTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
 
     float misWeight = 1.0f;
     if (mis) {
         float pdfBSDFDiffuseToLight  = max(dot(normal, lightDir), 0.0) / PI;
-        float pdfBSDFReflectionToLight = getGGX_VNDF_REFLECTION_PDF(material, normal, -prevRayDir, lightDir, directHalfVector);
-        float pdfBSDFTransmission = getGGX_TRANSMISSION_PDF(material, normal, -prevRayDir, lightDir, directTransmissionHalfVector, n_t, n_i);
+        float pdfBSDFReflectionToLight = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, lightDir, directHalfVector);
+        float pdfBSDFTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, lightDir, directTransmissionHalfVector, n_t, n_i);
         if (neeTIR) directFresnelValue = 1.0f;
         bsdfPDF = ((1.0 - directFresnelValue) * pdfBSDFDiffuseToLight) * (1.0f - material.transmissionFactor) + (directFresnelValue * pdfBSDFReflectionToLight) + (1.0 - directTransmissionFresnelValue) * pdfBSDFTransmission * material.transmissionFactor;
         misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
     }
     float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
-    float pdfReflection = getGGX_VNDF_REFLECTION_PDF(material, normal, -prevRayDir, rayDir, microfacetNormal);
-    float pdfTransmission = getGGX_TRANSMISSION_PDF(material, normal, -prevRayDir, rayDir, microfacetNormal, n_t, n_i);
+    float pdfReflection = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal);
+    float pdfTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal, n_t, n_i);
 
     vec3 indirectHalfVector = normalize(-prevRayDir + normalize(rayDir));
     vec3 indirectTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * rayDir));
 
-    float bsdfFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectHalfVector, -prevRayDir), 1.0, material.metalness);
-    float bsdfTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectTransmissionHalfVector, -prevRayDir), 1.0, material.metalness);
+    float bsdfFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectHalfVector, -prevRayDir, metalness), 1.0, metalness);
+    float bsdfTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
 
     float fullPdf = ((1.0 - bsdfFresnelValue) * pdfDiffuse) * (1.0f - material.transmissionFactor) + (bsdfFresnelValue * pdfReflection) + (1.0 - bsdfTransmissionFresnelValue) * pdfTransmission * material.transmissionFactor;
     bsdfPDF = fullPdf;
@@ -767,7 +810,13 @@ void processBounce(
         directLight = directBRDF * lightIntensity * emissionColor * misWeight / lightDirectionPDF;
     }
     accumulatedLight += directLight * throughput;
-    if (material.roughness == 0 && !diffuseBounce) {
+    //TODO: Test and read stained glass from gltf file rather than relying soley on hardcoded values
+    if (material.transmissionFactor > 0.0 && !entering && transmissionBounce) {
+        float absorption = 0.8f;
+        float thickness = length(origin - firstPoint);
+        throughput *= exp(-thickness * (1.0 - surfaceColor) * absorption);
+    }
+    if (roughness == 0 && !diffuseBounce) {
         if (reflectionBounce) {
             throughput *= fresnelSchlick(normal, -prevRayDir, f0) / fresnelValue;
         } else if (transmissionBounce) {
@@ -781,23 +830,37 @@ void processBounce(
     if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) { throughput = vec3(0.0f); return; }
 
     if (diffuseBounce) {
-        float lobePdf = (1.0 - fresnelValue) * (1.0 - material.transmissionFactor) * pdfDiffuse;
-        throughput *= getBurleyDiffuse(surfaceColor, material.roughness, normal, -prevRayDir, rayDir)
-                      * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
-                      * (1.0 - material.metalness)
-                      * (1.0 - material.transmissionFactor)
-                      * (TIR ? 0.0 : 1.0)
-                      * max(dot(normal, rayDir), 0.0)
-                      / lobePdf;
+        //float lobePdf = (1.0 - fresnelValue) * (1.0 - material.transmissionFactor) * pdfDiffuse;
+        //throughput *= getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, rayDir)
+        //              * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
+        //              * (1.0 - metalness)
+        //              * (1.0 - material.transmissionFactor)
+        //              * (TIR ? 0.0 : 1.0)
+        //              * max(dot(normal, rayDir), 0.0)
+        //              / lobePdf;
+        throughput *= (getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, rayDir) * PI)
+                     * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
+                     * (1.0 - metalness)
+                     * (TIR ? 0.0 : 1.0)
+                     / (1.0 - fresnelValue);
     } else if (reflectionBounce) {
-        float lobePdf = fresnelValue * pdfReflection;
-        throughput *= (getSpecularBRDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, rayDir, TIR)
-                      * max(dot(normal, rayDir), 0.0))
-                      / lobePdf;
-    } else {
-        float lobePdf = (1.0 - fresnelValue) * material.transmissionFactor * pdfTransmission;
-        throughput *= getBTDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, normalize(rayDir), n_i, n_t, eta) * (1.0 - material.metalness) * material.transmissionFactor * abs(dot(normal, rayDir))
-                             * (TIR ? 0.0 : 1.0) / lobePdf;
+        //float lobePdf = fresnelValue * pdfReflection;
+        //throughput *= (getSpecularBRDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, rayDir, TIR, roughness, metalness)
+        //              * max(dot(normal, rayDir), 0.0))
+        //              / lobePdf;
+        throughput *= sampleGGXGeometry(roughness, normal, rayDir)
+                 * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, -prevRayDir, f0))
+                 / fresnelValue;
+    } else if (transmissionBounce) {
+        //float lobePdf = (1.0 - fresnelValue) * material.transmissionFactor * pdfTransmission;
+        //throughput *= getBTDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, normalize(rayDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * abs(dot(normal, rayDir))
+         //                    * (TIR ? 0.0 : 1.0) / lobePdf;
+        throughput *= sampleGGXGeometry(roughness, normal, rayDir)
+                     * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
+                     * (1.0 - metalness)
+                     * (eta * eta)
+                     * (TIR ? 0.0 : 1.0)
+                     / (1.0 - fresnelValue);
     }
 
     if (russianRoulette) {
@@ -845,21 +908,14 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
     return normal;
 }
 
-vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
-    VertexBuffer vertices = VertexBuffer(material.vertexAddress);
-    IndexBuffer indices = IndexBuffer(material.indexAddress);
-    uint i0 = indices.data[primitiveIndex * 3 + 0];
-    uint i1 = indices.data[primitiveIndex * 3 + 1];
-    uint i2 = indices.data[primitiveIndex * 3 + 2];
-    vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
-    vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
-    vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
+vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material, vec3 v0, vec3 v1, vec3 v2, uint i0, uint i1, uint i2) {
     vec3 e1 = v1 - v0;
     vec3 e2 = v2 - v0;
     vec3 normal = normalize(cross(e1, e2));
     if (dot(normal, -rayDir) < 0.0) normal = -normal;
     return normal;
 }
+
 
 
 
@@ -882,7 +938,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
 
          if (visibility.b < 0.0001) {
-             lightSum += skyColor * SKY_RADIENCE;
+             lightSum += skyColor * SKY_RADIENCE * SKY_MULTIPLIER;
              continue;
          }
          int materialIndex = int(visibility.r);
@@ -929,7 +985,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          int lightMaterialIndex;
          float lightDist = -1.0f;
          float bsdfPDF = 0.0f;
-
+         vec3 pos = origin.xyz;
          vec3 lightDir = normalize(sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex));
          if (lightDirectionPDF <= 0) continue;
          traceRayEXT(
@@ -956,9 +1012,17 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          }
          //transformNormal(material, normal, vec2(u, v), primitiveIndex, rayDir);
          rayDir = vec3(0.0);
-         processBounce(normal, material, materialIndex, getSurfaceColor(material, vec2(u, v), primitiveIndex), prevRayDir, randState,
+         float metalness;
+         float roughness;
+         vec2 texCoords = vec2(0.0);
+         if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
+            texCoords = getTexCoords(material, vec2(u, v), primitiveIndex, i0, i1, i2);
+         }
+         applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, 0.0);
+
+         processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex), prevRayDir, randState,
                          rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, material.roughness != 0, false, bsdfPDF);
+                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, roughness != 0, false, bsdfPDF, roughness, metalness);
 
          //if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) throughput = vec3(0.0f);
 
@@ -968,7 +1032,7 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
          }
          for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
              rayPayload.distance = -1.0f;
-             bool mis = material.roughness != 0;
+             bool mis = roughness != 0;
              traceRayEXT(
                  topLevelAS,
                  gl_RayFlagsOpaqueEXT,
@@ -985,25 +1049,31 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
              prevRayDir = rayDir;
              material = materials.materialData[rayPayload.materialIndex];
              primitiveIndex = rayPayload.primitiveIndex;
-             normal = calculateFaceNormal(rayPayload.primitiveIndex, rayDir, material);
+
+             vertices = VertexBuffer(material.vertexAddress);
+             indices = IndexBuffer(material.indexAddress);
+             i0 = indices.data[rayPayload.primitiveIndex * 3 + 0];
+             i1 = indices.data[rayPayload.primitiveIndex * 3 + 1];
+             i2 = indices.data[rayPayload.primitiveIndex * 3 + 2];
+             v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
+             v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
+             v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
+
+             normal = calculateFaceNormal(rayPayload.primitiveIndex, rayDir, material, v0, v1, v2, i0, i1, i2);
              materialIndex = int(rayPayload.materialIndex);
              vec3 prevOrigin = origin.xyz;
              origin = vec4(origin.xyz + rayDir * rayPayload.distance, 1);
              vec2 uv = rayPayload.uv;
+             texCoords = vec2(0.0f);
+             if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
+                 texCoords = getTexCoords(material, uv, primitiveIndex, i0, i1, i2);
+             }
+             applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, 0.0);
              if (INTERPOLATED_NORMALS) {
-                vertices = VertexBuffer(material.vertexAddress);
-                indices = IndexBuffer(material.indexAddress);
                 normals = NormalBuffer(material.normalAddress);
-                uint i0 = indices.data[rayPayload.primitiveIndex * 3 + 0];
-                uint i1 = indices.data[rayPayload.primitiveIndex * 3 + 1];
-                uint i2 = indices.data[rayPayload.primitiveIndex * 3 + 2];
                 vec3 n0 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i0*3+0], normals.data[i0*3+1], normals.data[i0*3+2]));
                 vec3 n1 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i1*3+0], normals.data[i1*3+1], normals.data[i1*3+2]));
                 vec3 n2 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
-                v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
-                v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
-                v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
-
                 normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
              }
              //transformNormal(material, normal, uv, primitiveIndex, rayDir);
@@ -1039,14 +1109,14 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                   break;
              }
 
-             mis = material.roughness != 0;
+             mis = roughness != 0;
              int lightMaterialIndex;
              lightDist = -1.0f;
              vec3 lightDir = normalize(sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex));
 
              if (lightDirectionPDF <= 0) break;
 
-
+            vec3 pos = origin.xyz;
             if (mis) {
                 traceRayEXT(
                      topLevelAS,
@@ -1061,12 +1131,11 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material) {
                      lightDist > 0 ? lightDist : tMax,
                      0
                 );
-            }
+             }
 
-
-             processBounce(normal, material, materialIndex, getSurfaceColor(material, uv, primitiveIndex), prevRayDir, randState,
-                 material.roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, i >= 2, bsdfPDF);
+             processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex), prevRayDir, randState,
+                 roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
+                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, i >= 2, bsdfPDF, roughness, metalness);
 
              if (throughput == vec3(0)) {
                 break;

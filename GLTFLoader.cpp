@@ -3,7 +3,6 @@
 #include <fastgltf/tools.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "GLTFLoader.h"
-
 #include "VulkanCommon.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -111,7 +110,7 @@ void GLTFLoader::processNodes(
                     auto& texture = gltf.textures[gltf.materials[materialIndex].pbrData.baseColorTexture -> textureIndex];
                     if (texture.imageIndex.has_value()) {
                         auto& image = gltf.images[texture.imageIndex.value()];
-                        uploadTexture(image, TextureBuffers::baseColor,gltf, name, device, &material.baseColorTextureIndex);
+                        uploadTexture(image, TextureBuffers::baseColor,gltf, name, device, &material.baseColorTextureIndex, VK_FORMAT_R8G8B8A8_SRGB);
                     }
                 }
 
@@ -119,7 +118,15 @@ void GLTFLoader::processNodes(
                     auto& texture = gltf.textures[gltf.materials[materialIndex].normalTexture -> textureIndex];
                     if (texture.imageIndex.has_value()) {
                         auto& image = gltf.images[texture.imageIndex.value()];
-                        uploadTexture(image, TextureBuffers::normalMap,gltf, name, device, &material.normalMapTextureIndex);
+                        uploadTexture(image, TextureBuffers::normalMap,gltf, name, device, &material.normalMapTextureIndex, VK_FORMAT_R8G8B8A8_SRGB);
+                    }
+                }
+
+                if (gltf.materials[materialIndex].pbrData.metallicRoughnessTexture) {
+                    auto& texture = gltf.textures[gltf.materials[materialIndex].pbrData.metallicRoughnessTexture -> textureIndex];
+                    if (texture.imageIndex.has_value()) {
+                        auto& image = gltf.images[texture.imageIndex.value()];
+                        uploadTexture(image, TextureBuffers::metallicRoughnessMap,gltf, name, device, &material.metallicRoughnessMapTextureIndex, VK_FORMAT_R8G8B8A8_SRGB);
                     }
                 }
                 imageCounter++;
@@ -227,7 +234,7 @@ void GLTFLoader::processNodes(
 
 }
 
-void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer, fastgltf::Asset &gltf, std::string name, vk::raii::Device &device, int* textureIndexPtr) {
+void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer, fastgltf::Asset &gltf, std::string name, vk::raii::Device &device, int* textureIndexPtr, VkFormat format) {
     std::filesystem::path gltfDir = "resources/GLTFModels/" + name + "/";
     void* imageBytes;
     size_t imageSize;
@@ -297,7 +304,7 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
     std::string imageId = textureBuffer + std::to_string(imageCounter);
     int textureIndex = textureBufferManager.getTextureViews(textureBuffer).size();
     *textureIndexPtr = textureIndex;
-    textureBufferManager.registerImage(imageId, textureBuffer, VK_FORMAT_R8G8B8A8_SRGB, width, height);
+    textureBufferManager.registerImage(imageId, textureBuffer, format, width, height);
     VmaAllocator allocator = Application::get() -> getMemoryAllocator();
 
     VkBuffer buffer;
@@ -375,6 +382,142 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
         &copyInfo
     );
     commandBuffers[0].copyBufferToImage2(copyBufferToImageInfo);
+
+    vk::ImageMemoryBarrier2 mipSrcBarrier(
+        vk::PipelineStageFlagBits2::eTransfer,
+        vk::AccessFlagBits2::eTransferWrite,
+        vk::PipelineStageFlagBits2::eTransfer,
+        vk::AccessFlagBits2::eTransferRead,
+        vk::ImageLayout::eTransferDstOptimal,
+        vk::ImageLayout::eTransferSrcOptimal,
+        0,
+        0,
+        textureImage->getImage(),
+        subresourceRange
+    );
+    vk::DependencyInfo mipSrcDepInfo(
+        {},
+        {},
+        {},
+        mipSrcBarrier
+    );
+
+    commandBuffers[0].pipelineBarrier2(mipSrcDepInfo);
+    uint32_t numMips = static_cast<uint32_t>(std::floor(std::log2(static_cast<float>(std::max(width, height))))) + 1;
+    std::vector<vk::ImageBlit2> mipBlitInfo;
+
+    for (uint32_t i = 1; i < numMips; i++) {
+        vk::ImageSubresourceLayers baseSubResource{
+            vk::ImageAspectFlagBits::eColor,
+            0,
+            0,
+            1
+        };
+
+        vk::ImageSubresourceLayers mipSubResource{
+            vk::ImageAspectFlagBits::eColor,
+            i,
+            0,
+            1
+        };
+
+        std::array<vk::Offset3D, 2> srcOffsets{
+            vk::Offset3D{0, 0, 0},
+            vk::Offset3D{width, height, 1}
+        };
+        int mipWidth = width / pow(2, i);
+        int mipHeight = height / pow(2, i);
+        std::array<vk::Offset3D, 2> dstOffsets{
+            vk::Offset3D{0, 0, 0},
+            vk::Offset3D{mipWidth, mipHeight, 1}
+        };
+
+        vk::ImageBlit2 imageBlit{
+            baseSubResource,
+            srcOffsets,
+            mipSubResource,
+            dstOffsets
+        };
+
+        vk::ImageSubresourceRange mipSubresourceRange(
+            vk::ImageAspectFlagBits::eColor,
+            i, 1, 0, 1
+        );
+        vk::ImageMemoryBarrier2 mipDstBarrier(
+            vk::PipelineStageFlagBits2::eTransfer,
+            vk::AccessFlagBits2::eNone,
+            vk::PipelineStageFlagBits2::eTransfer,
+            vk::AccessFlagBits2::eTransferWrite,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal,
+            0,
+            0,
+            textureImage->getImage(),
+            mipSubresourceRange
+        );
+        vk::DependencyInfo mipDstDepInfo(
+            {},
+            {},
+            {},
+            mipDstBarrier
+        );
+
+        commandBuffers[0].pipelineBarrier2(mipDstDepInfo);
+        mipBlitInfo.push_back(imageBlit);
+
+    }
+
+
+    commandBuffers[0].blitImage2({textureImage -> getImage(),
+        vk::ImageLayout::eTransferSrcOptimal,
+        textureImage -> getImage(), vk::ImageLayout::eTransferDstOptimal, numMips - 1, mipBlitInfo.data()});
+
+    for (uint32_t i = 1; i < numMips; i++) {
+        vk::ImageSubresourceRange mipSubresourceRange(
+            vk::ImageAspectFlagBits::eColor,
+            i, 1, 0, 1
+        );
+        vk::ImageMemoryBarrier2 mipMapShaderReadBarrier(
+        vk::PipelineStageFlagBits2::eTransfer,
+        vk::AccessFlagBits2::eTransferWrite,
+        vk::PipelineStageFlagBits2::eRayTracingShaderKHR,vk::AccessFlagBits2::eShaderSampledRead,
+        vk::ImageLayout::eTransferDstOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        0,
+        0,
+          textureImage->getImage(),
+          mipSubresourceRange
+         );
+        vk::DependencyInfo mipDepInfo(
+            {},
+            {},
+            {},
+            mipMapShaderReadBarrier
+        );
+
+        commandBuffers[0].pipelineBarrier2(mipDepInfo);
+    }
+    vk::ImageMemoryBarrier2 shaderReadBarrier(
+        vk::PipelineStageFlagBits2::eTransfer,
+        vk::AccessFlagBits2::eNone,
+        vk::PipelineStageFlagBits2::eRayTracingShaderKHR,
+        vk::AccessFlagBits2::eShaderSampledRead,
+        vk::ImageLayout::eTransferSrcOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        0,
+        0,
+        textureImage->getImage(),
+        subresourceRange
+    );
+
+    vk::DependencyInfo readBarrierDepInfo(
+        {},
+        {},
+        {},
+        shaderReadBarrier
+    );
+
+    commandBuffers[0].pipelineBarrier2(readBarrierDepInfo);
     commandBuffers[0].end();
     queue.submit(submitInfo);
     queue.waitIdle();

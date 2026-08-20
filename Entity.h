@@ -26,6 +26,7 @@ struct alignas(16) Material {
     int lightIndex = -1;
     int baseColorTextureIndex = -1;
     int normalMapTextureIndex = -1;
+    int metallicRoughnessMapTextureIndex = -1;
 };
 
 class Entity {

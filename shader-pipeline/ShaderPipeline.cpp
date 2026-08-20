@@ -254,7 +254,7 @@ void ShaderPipeline::setTextureBuffer(DescriptorBinding descriptorBinding, std::
              0.0,
              0.0,
              vk::False, vk::CompareOp::eNever,
-             0.0, 0.0, vk::BorderColor::eIntOpaqueBlack
+             0.0, VK_LOD_CLAMP_NONE, vk::BorderColor::eIntOpaqueBlack
          );
         if (!image.sampler.has_value()) {
             image.sampler.emplace(device->createSampler(samplerCreateInfo));

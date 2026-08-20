@@ -22,7 +22,7 @@ void TextureBufferManager::registerImage(std::string imageId, std::string textur
     // imageInfo.format = VK_FORMAT_B8G8R8A8_SRGB;
     imageInfo.format = format;
     imageInfo.extent = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-    imageInfo.mipLevels = 1;
+    imageInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(static_cast<float>(std::max(width, height))))) + 1;
     imageInfo.arrayLayers = 1;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -49,7 +49,7 @@ void TextureBufferManager::registerImage(std::string imageId, std::string textur
     viewInfo.format = static_cast<vk::Format>(format);
     viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
     viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.levelCount = static_cast<uint32_t>(std::floor(std::log2(static_cast<float>(std::max(width, height))))) + 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
