@@ -3,7 +3,11 @@
 #include "RaytracingShaderPipeline.h"
 
 #include <iostream>
-
+#ifndef VULKAN_SDK_FOUND
+#include <volk.h>
+#else
+#include <vulkan/vulkan.h>
+#endif
 #include "../raytracing/AccelerationStructureManager.h"
 
 

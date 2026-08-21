@@ -1,7 +1,11 @@
 
 #include "AccelerationStructureManager.h"
 #include <deque>
-
+#ifndef VULKAN_SDK_FOUND
+#include <volk.h>
+#else
+#include <vulkan/vulkan.h>
+#endif
 
 #include <cstdint>
 /**
