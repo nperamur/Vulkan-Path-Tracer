@@ -20,6 +20,13 @@
 #include "shader-pipeline/ShaderPair.h"
 #include "shader-pipeline/ShaderPipelineRegistry.h"
 
+struct InFlightImageAvailabilitySemaphoreInfo {
+    uint64_t startCount;
+    uint64_t endCount;
+    int acquireIndex;
+    vk::Semaphore semaphore;
+};
+
 //This class owns and manages the lifecycle of the application
 //It handles window management, initialization of vulkan (i.e. devices, swap chain, command buffers ect.) and coordination of systems
 class Application {
@@ -31,6 +38,7 @@ class Application {
     std::optional<vk::raii::SwapchainKHR> swapChain;
     std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
     std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+    std::vector<vk::raii::Semaphore> timelineSemaphores;
     std::vector<vk::raii::Fence> imageAvailableFences;
     std::vector<vk::raii::Fence> syncHostWithDeviceFences;
     std::vector<vk::raii::ImageView> imageViews;
@@ -39,6 +47,9 @@ class Application {
     std::optional<vk::raii::CommandBuffers> commandBuffers;
     std::optional<vk::Extent2D> swapChainExtent;
     std::array<vk::Fence, 3> imagesInFlight;
+    std::array<vk::Semaphore, 3> imageAvailableSemaphoresInFlight;
+    //note to self: endCount, imageavailabilitysemaphore
+    std::vector<InFlightImageAvailabilitySemaphoreInfo> inFlightAvailabilitySemaphores;
     // VkImage depthImage;
     // VmaAllocation depthImageAllocation;
     std::array<VkImage, 3> depthImages;
@@ -69,11 +80,11 @@ private:void cleanUp(GLFWwindow *window);
 
     void loop(GLFWwindow *window);
 
-    void draw(int imageIndex, vk::PipelineStageFlags stageFlags, int currentFrame);
+    void draw(int imageIndex, vk::PipelineStageFlags stageFlags);
 
-    void present(const uint32_t *imagePointer, int currentFrame);
+    void present(const uint32_t *imagePointer, int imageIndex);
 
-    int getNextImage(int currentFrame);
+    int getNextImage(int acquireIndex);
 
     void setupVulkan(GLFWwindow *window);
 
@@ -98,6 +109,7 @@ private:void cleanUp(GLFWwindow *window);
 
     void setUpMemoryAllocator();
 
+    std::pair<int, bool> getNextAcquireIndex();
 
 
 };

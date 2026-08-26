@@ -44,7 +44,7 @@
 
 
 SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader) {
-    //
+
     WorldObject sponza;
     sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
     sponza.setScale(glm::vec3(4.0f));
@@ -57,7 +57,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBox));
-
+    //
     // WorldObject cornellBoxSpheres;
     // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.25f, emissiveVertices, lightData));
     // cornellBoxSpheres.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -78,7 +78,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // blocks.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // blocks.setPosition(glm::vec3(-250.0f, -90.0f, 150.0f));
     // entities.emplace_back(std::move(blocks));
-
+    //
     // WorldObject cornellBoxMirror;
     // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, 0.06f, emissiveVertices, lightData));
     // cornellBoxMirror.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -87,7 +87,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // entities.emplace_back(std::move(cornellBoxMirror));
     //
     // WorldObject veachMisTestScene;
-    // veachMisTestScene.entities = std::move(gltfLoader.load("veach-mis-core", loader, device, physicalDevice, mvp, 1.0f, 0.02f, emissiveVertices, lightData));
+    // veachMisTestScene.entities = std::move(gltfLoader.load("veach-mis-core", loader, device, physicalDevice, mvp, 1.0f, 0.005f, emissiveVertices, lightData));
     // veachMisTestScene.setScale(glm::vec3(0.05f));
     // veachMisTestScene.setRotation(-90, glm::vec3(0.0f, 1.0f, 0.0f));
     // entities.emplace_back(std::move(veachMisTestScene));

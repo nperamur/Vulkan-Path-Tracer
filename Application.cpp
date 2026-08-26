@@ -58,17 +58,26 @@ void Application::loop(GLFWwindow* window) {
     double lastTime = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        camera.handleInputs();
         int width, height;
         glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
         if (width == 0 || height == 0) {
             glfwWaitEvents();
             continue;
         }
-        device->waitForFences({*imageAvailableFences.at(currentFrame), *syncHostWithDeviceFences.at(currentFrame)}, VK_TRUE, UINT64_MAX);
-
+        // double fenceTimeStart = glfwGetTime();
+        // device->waitForFences({*syncHostWithDeviceFences.at(currentFrame)}, VK_TRUE, UINT64_MAX);
+        // double fenceTimeEnd = glfwGetTime();
+        // std::cout << fenceTimeEnd - fenceTimeStart << std::endl;
 
         vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eAllCommands };
-        int imageIndex = getNextImage(currentFrame);
+
+        std::pair<int, bool> acquireIndex = getNextAcquireIndex();
+        if (!acquireIndex.second) {
+            continue;
+        }
+
+        int imageIndex = getNextImage(acquireIndex.first);
         if (imageIndex == -1) {
             //std::cout << "Swapchain next image retrieval failed";
             device -> waitIdle();
@@ -77,45 +86,118 @@ void Application::loop(GLFWwindow* window) {
         }
         if (imagesInFlight[imageIndex]) {
             device->waitForFences({imagesInFlight[imageIndex]}, VK_TRUE, UINT64_MAX);
+            imagesInFlight[imageIndex] = VK_NULL_HANDLE;
+            imageAvailableSemaphoresInFlight[imageIndex] = VK_NULL_HANDLE;
         }
-        imagesInFlight[imageIndex] = *syncHostWithDeviceFences.at(currentFrame);
-        camera.handleInputs();
+        imagesInFlight[imageIndex] = *syncHostWithDeviceFences.at(acquireIndex.first);
+        imageAvailableSemaphoresInFlight[imageIndex] = *imageAvailableSemaphores.at(acquireIndex.first);
         commandBuffers->at(imageIndex).reset();
         renderer -> render(commandBuffers->at(imageIndex), imageViews.at(imageIndex),
             depthImageViews[imageIndex].value(), swapChain -> getImages().at(imageIndex), depthImages[imageIndex], imageIndex);
-        draw(imageIndex, flagBits, currentFrame);
+        draw(imageIndex, flagBits);
 
         uint32_t image = imageIndex;
-        present(&image, currentFrame);
+        present(&image, imageIndex);
         currentFrame = (currentFrame + 1) % Config::maxFramesInFlight;
         double currentTime = glfwGetTime();
         double deltaTime = currentTime - lastTime;
-        // printf("FPS:%f\n", 1/deltaTime);
+        //printf("FPS:%f\n", 1/deltaTime);
         lastTime = currentTime;
+
     }
 }
 
-void Application::draw(int imageIndex, vk::PipelineStageFlags stageFlags, int currentFrame) {
+std::pair<int, bool> Application::getNextAcquireIndex() {
+    double maxProgressCount = 0.0;
+    std::unordered_set<int> frameIndices;
+    for (int i = 0; i < Config::maxFramesInFlight; i++) {
+        frameIndices.insert(i);
+    }
+    std::optional<InFlightImageAvailabilitySemaphoreInfo> closestToCompleted = std::nullopt;
+
+    int i = 0;
+    while (i < inFlightAvailabilitySemaphores.size()) {
+        auto& info = inFlightAvailabilitySemaphores[i];
+        uint64_t counter;
+        vkGetSemaphoreCounterValue(
+            **device,
+            info.semaphore,
+            &counter
+        );
+        if (counter >= info.endCount) {
+            int acquireIndex = info.acquireIndex;
+            inFlightAvailabilitySemaphores.erase(inFlightAvailabilitySemaphores.begin() + i);
+            return std::make_pair<>(acquireIndex, true);
+        }
+        uint64_t progressCount = counter - info.startCount;
+
+        double normalizedProgress = static_cast<double>(progressCount) / (static_cast<double>(info.endCount) - info.startCount);
+
+        if (normalizedProgress > maxProgressCount) {
+            maxProgressCount = normalizedProgress;
+            closestToCompleted = info;
+        }
+        frameIndices.erase(info.acquireIndex);
+        i++;
+
+    }
+
+    if (frameIndices.empty()) {
+        if (closestToCompleted != std::nullopt) {
+            return std::make_pair<>(closestToCompleted->acquireIndex, false);
+        } else {
+            return std::make_pair<>(-1, false);
+        }
+    }
+    return std::make_pair<>(*frameIndices.begin(), true);
+
+}
+
+void Application::draw(int imageIndex, vk::PipelineStageFlags stageFlags) {
     vk::Queue queue = device->getQueue(0, 0);
+    std::vector<vk::Semaphore> semaphores = {
+        *renderFinishedSemaphores.at(imageIndex),
+        timelineSemaphores.at(imageIndex)
+    };
+
+    uint64_t counter;
+    vkGetSemaphoreCounterValue(
+        **device,
+        *timelineSemaphores.at(imageIndex),
+        &counter
+    );
+    uint64_t signalValues[] = {
+        0,
+        counter + 1
+    };
+
+    vk::TimelineSemaphoreSubmitInfo timelineSubmitInfo(
+        0,
+        nullptr,
+        2,
+        signalValues
+    );
+
     vk::SubmitInfo submitInfo(
         1,
-        &(*imageAvailableSemaphores.at(currentFrame)),
+        &imageAvailableSemaphoresInFlight[imageIndex],
         &stageFlags,
         1,
         &*commandBuffers->at(imageIndex),
-        1,
-        &(*renderFinishedSemaphores.at(currentFrame))
-
+        2,
+        semaphores.data()
     );
-    device->resetFences(*syncHostWithDeviceFences.at(currentFrame));
-    queue.submit(submitInfo, *syncHostWithDeviceFences.at(currentFrame));
+
+    submitInfo.pNext = &timelineSubmitInfo;
+    device->resetFences(imagesInFlight[imageIndex]);
+    queue.submit(submitInfo, imagesInFlight[imageIndex]);
 }
 
-void Application::present(const uint32_t *imagePointer, int currentFrame) {
+void Application::present(const uint32_t *imagePointer, int imageIndex) {
 
     vk::PresentInfoKHR presentInfo(
         1,
-        &(*renderFinishedSemaphores.at(currentFrame)),
+        &(*renderFinishedSemaphores.at(imageIndex)),
         1,
         &(**swapChain),
         imagePointer
@@ -142,16 +224,14 @@ void Application::present(const uint32_t *imagePointer, int currentFrame) {
 }
 
 
-int Application::getNextImage(int currentFrame) {
-    device->resetFences(*imageAvailableFences.at(currentFrame));
-    auto [result, imageIndex]  = swapChain -> acquireNextImage(UINT64_MAX, *imageAvailableSemaphores.at(currentFrame), *imageAvailableFences.at(currentFrame));
-
+int Application::getNextImage(int acquireIndex) {
+    auto [result, imageIndex]  = swapChain -> acquireNextImage(UINT64_MAX, *imageAvailableSemaphores.at(acquireIndex), VK_NULL_HANDLE);
     if (result != vk::Result::eSuccess) {
         switch (result) {
             case vk::Result::eErrorOutOfDateKHR:
                 std::cout << "Detected out of date error. Will recreate swapchain.";
                 setupSwapChain();
-                std::tie(result, imageIndex) = swapChain->acquireNextImage(UINT64_MAX, *imageAvailableSemaphores.at(currentFrame), *imageAvailableFences.at(currentFrame));
+                std::tie(result, imageIndex) = swapChain->acquireNextImage(UINT64_MAX, *imageAvailableSemaphores.at(acquireIndex), VK_NULL_HANDLE);
                 if (result != vk::Result::eSuccess) {
                     return -1;
                 }
@@ -165,6 +245,15 @@ int Application::getNextImage(int currentFrame) {
                 throw std::runtime_error("Failed to present swapchain image: " + vk::to_string(result));
         }
     }
+    uint64_t counter;
+    vkGetSemaphoreCounterValue(
+        **device,
+        *timelineSemaphores.at(imageIndex),
+        &counter
+    );
+    inFlightAvailabilitySemaphores.emplace_back(
+        counter, counter + 1, acquireIndex, *timelineSemaphores.at(imageIndex)
+    );
     return imageIndex;
 
 }
@@ -319,6 +408,8 @@ void Application::setupDevices() {
     physicalDeviceAccelerationFeatures.accelerationStructure = VK_TRUE;
     physicalDeviceAccelerationFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
     vk::PhysicalDeviceFeatures2 physicalDeviceFeatures{};
+    vk::PhysicalDeviceTimelineSemaphoreFeatures semaphoreFeatures{};
+    semaphoreFeatures.timelineSemaphore = VK_TRUE;
     physicalDeviceFeatures.features.geometryShader = VK_TRUE;
     physicalDeviceFeatures.features.shaderInt64 = VK_TRUE;
     VkPhysicalDeviceDescriptorIndexingFeatures indexing{};
@@ -347,6 +438,7 @@ void Application::setupDevices() {
     robustnessFeatures.setPNext(&physicalDeviceFeatures);
     physicalDeviceFeatures.setPNext(&positionFetchFeatures);
     positionFetchFeatures.setPNext(&indexing);
+    indexing.pNext = semaphoreFeatures;
 
 
 
@@ -423,14 +515,26 @@ void Application::setupSwapChain() {
     vk::SemaphoreCreateInfo semaphoreInfo{};
     vk::FenceCreateInfo fenceInfo(vk::FenceCreateFlagBits::eSignaled);
 
-    imageAvailableFences.clear();
+
+    vk::SemaphoreTypeCreateInfo timelineCreateInfo(
+        vk::SemaphoreType::eTimeline,
+        0ULL
+    );
+
+    vk::SemaphoreCreateInfo timelineSemaphoreCreateInfo(
+        vk::SemaphoreCreateFlags(),
+        &timelineCreateInfo
+    );
+
     renderFinishedSemaphores.clear();
+    timelineSemaphores.clear();
     imageAvailableSemaphores.clear();
+    inFlightAvailabilitySemaphores.clear();
     syncHostWithDeviceFences.clear();
     for (int i = 0; i < Config::maxFramesInFlight; i++) {
         imageAvailableSemaphores.emplace_back(*device, semaphoreInfo);
         renderFinishedSemaphores.emplace_back(*device, semaphoreInfo);
-        imageAvailableFences.emplace_back(*device, fenceInfo);
+        timelineSemaphores.emplace_back(*device, timelineSemaphoreCreateInfo);
         syncHostWithDeviceFences.emplace_back(*device, fenceInfo);
     }
 }

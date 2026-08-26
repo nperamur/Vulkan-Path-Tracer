@@ -470,7 +470,7 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
 
     commandBuffers[0].blitImage2({textureImage -> getImage(),
         vk::ImageLayout::eTransferSrcOptimal,
-        textureImage -> getImage(), vk::ImageLayout::eTransferDstOptimal, numMips - 1, mipBlitInfo.data()});
+        textureImage -> getImage(), vk::ImageLayout::eTransferDstOptimal, numMips - 1, mipBlitInfo.data(), vk::Filter::eLinear});
 
     for (uint32_t i = 1; i < numMips; i++) {
         vk::ImageSubresourceRange mipSubresourceRange(
