@@ -28,7 +28,7 @@ Renders demonstrating these additions are shown below.
   <tr>
     <td align="center"><b>Cornell box (Area lights)</b></td>
     <td align="center"><b>Textured Sponza</b></td>
-    <td align="center"><b>Cornell Box Spheres (Transmission on red-tinted sphere)</b></td>
+    <td align="center"><b>Cornell Box Spheres (Transmission on red-tinted glass sphere)</b></td>
   </tr>
   <tr>
     <td><img width="400" alt="Screenshot 2026-09-02 000102" src="https://github.com/user-attachments/assets/37957de1-5683-4b93-81cf-639904c3e2c8" /></td>
