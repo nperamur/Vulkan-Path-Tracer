@@ -4,7 +4,7 @@ Diffuse lighting uses cosine weighted importance sampling and specular uses GGX 
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
 
-<img width="1056" height="957" alt="Screenshot 2026-06-03 195334" src="https://github.com/user-attachments/assets/603855ac-262e-4d97-be6e-9c7befb09b55" />
+<img height="400" alt="Screenshot 2026-09-02 212653" src="https://github.com/user-attachments/assets/e3b02af2-92c5-4a4b-9e93-07cfc35ddd21" />
 
 | | Low Roughness | High Roughness |
 |---|---|---|
@@ -13,6 +13,12 @@ The pathtracer is progressive, meaning you can move the camera and watch the ima
 
 
 <br>
+
+
+The render below further demonstrates how the path tracer handles different material properties. In the image, the teapot shows rough reflections, which appear blurrier, while the sphere shows smooth reflections. The cube demonstrates a rougher, more diffuse material with less reflectivity.
+
+<img width="400" alt="Screenshot 2026-07-20 012948" src="https://github.com/user-attachments/assets/9fba72ff-575b-42bf-9412-5e7f45aeeaf3" />
+
 
 #### Update: Added Area Lights support, textured glTF model loading, and transmission for refractive materials
 
