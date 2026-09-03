@@ -37,7 +37,7 @@ Renders demonstrating these additions are shown below.
 
 **Importance Sampling**: We use the following techniques to reduce variance and increase the convergence speed of the render.
 - Cosine-weighted diffuse sampling
-- GGX VNDF sampling for specular
+- GGX VNDF sampling for reflections and transmission
 - Multiple importance sampling with next event estimation, using the balance heuristic
 - Throughput-based russian roulette
 
