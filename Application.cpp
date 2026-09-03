@@ -56,6 +56,7 @@ void Application::cleanUp(GLFWwindow* window) {
 void Application::loop(GLFWwindow* window) {
     int currentFrame = 0;
     double lastTime = glfwGetTime();
+    std::cout << "Starting frame loop..." << std::endl;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         camera.handleInputs();
@@ -70,7 +71,7 @@ void Application::loop(GLFWwindow* window) {
         // double fenceTimeEnd = glfwGetTime();
         // std::cout << fenceTimeEnd - fenceTimeStart << std::endl;
 
-        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eAllCommands };
+        vk::PipelineStageFlagBits flagBits = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
 
         std::pair<int, bool> acquireIndex = getNextAcquireIndex();
         if (!acquireIndex.second) {
@@ -166,10 +167,20 @@ void Application::draw(int imageIndex, vk::PipelineStageFlags stageFlags) {
         *timelineSemaphores.at(imageIndex),
         &counter
     );
+
     uint64_t signalValues[] = {
         0,
         counter + 1
     };
+    if (counter == std::numeric_limits<uint64_t>::max()) {
+        VkResult result = vkDeviceWaitIdle(**device);
+
+        if (result == VK_ERROR_DEVICE_LOST) {
+            std::cout << "DEVICE LOST\n";
+        } else {
+            std::cout << "wait idle result: " << result << '\n';
+        }
+    }
 
     vk::TimelineSemaphoreSubmitInfo timelineSubmitInfo(
         0,
@@ -263,13 +274,21 @@ int Application::getNextImage(int acquireIndex) {
 
 //Does the initial vulkan setup
 void Application::setupVulkan(GLFWwindow* window) {
+    std::cout << "Creating vulkan instance..." << std::endl;
     createVulkanInstance();
+    std::cout << "Creating window..." << std::endl;
     createSurface(window);
+    std::cout << "Setting up physical and logical devices..." << std::endl;
     setupDevices();
+    std::cout << "Setting up memory allocator..." << std::endl;
     setUpMemoryAllocator();
+    std::cout << "Setting up swapchain..." << std::endl;
     setupSwapChain();
+    std::cout << "Creating command pool..." << std::endl;
     createCommandPool();
+    std::cout << "Setting up command buffers..." << std::endl;
     createCommandBuffers();
+    std::cout << "Initializing Renderer..." << std::endl;
     initRenderer();
 
 }
@@ -388,6 +407,7 @@ void Application::setupDevices() {
         1,
         &priority
     );
+    std::cout << "Configuring extensions..." << std::endl;
 
     //Logical device selection:
     const char* enabledExtensions[10] = {"VK_KHR_swapchain", "VK_KHR_acceleration_structure", "VK_KHR_ray_tracing_pipeline",
@@ -412,6 +432,7 @@ void Application::setupDevices() {
     semaphoreFeatures.timelineSemaphore = VK_TRUE;
     physicalDeviceFeatures.features.geometryShader = VK_TRUE;
     physicalDeviceFeatures.features.shaderInt64 = VK_TRUE;
+    physicalDeviceFeatures.features.samplerAnisotropy = VK_TRUE;
     VkPhysicalDeviceDescriptorIndexingFeatures indexing{};
     indexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
     indexing.runtimeDescriptorArray = VK_TRUE;
@@ -438,7 +459,7 @@ void Application::setupDevices() {
     robustnessFeatures.setPNext(&physicalDeviceFeatures);
     physicalDeviceFeatures.setPNext(&positionFetchFeatures);
     positionFetchFeatures.setPNext(&indexing);
-    indexing.pNext = semaphoreFeatures;
+    indexing.pNext = &semaphoreFeatures;
 
 
 
@@ -528,6 +549,7 @@ void Application::setupSwapChain() {
 
     renderFinishedSemaphores.clear();
     timelineSemaphores.clear();
+    semaphoreCounter.clear();
     imageAvailableSemaphores.clear();
     inFlightAvailabilitySemaphores.clear();
     syncHostWithDeviceFences.clear();

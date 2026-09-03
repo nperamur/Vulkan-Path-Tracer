@@ -251,8 +251,8 @@ void ShaderPipeline::setTextureBuffer(DescriptorBinding descriptorBinding, std::
              vk::SamplerAddressMode::eRepeat,
          vk::SamplerAddressMode::eRepeat,
              0.0,
-             0.0,
-             0.0,
+             VK_TRUE,
+             8.0,
              vk::False, vk::CompareOp::eNever,
              0.0, VK_LOD_CLAMP_NONE, vk::BorderColor::eIntOpaqueBlack
          );

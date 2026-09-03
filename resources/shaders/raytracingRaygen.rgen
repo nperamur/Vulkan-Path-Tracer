@@ -5,13 +5,13 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
-layout(set = 0, binding = 2) uniform sampler2D visibilityBuffer;
+//layout(set = 0, binding = 1) uniform sampler2D depthBuffer;
+//layout(set = 0, binding = 2) uniform sampler2D visibilityBuffer;
 layout(set = 0, binding = 4) uniform sampler2D[] baseColorTextures;
 layout(set = 0, binding = 5) uniform sampler2D[] normalMapTextures;
 layout(set = 0, binding = 6) uniform sampler2D[] metallicRoughnessMapTextures;
 layout(set = 0, binding = 7, rgba32f) uniform image2D storageImage;
-layout(set = 0, binding = 3) uniform sampler2D normalBuffer;
+//layout(set = 0, binding = 3) uniform sampler2D normalBuffer;
 struct RayPayload {
     float distance;
     uint materialIndex;
@@ -143,20 +143,20 @@ const float directionalLightAngularRadius = 0.00465;
 //TODO: give sun ratio relative to other weights
 const float SUN_ANGLE_WEIGHT_MULTIPLIER = 10000;
 const float SUN_WEIGHT_RATIO = 0.5f;
-const float SUN_RADIENCE = 3.33e5;
+const float SUN_RADIANCE = 3.33e5;
 
 //float u, float[] cdfBuffer int start, int end, int index, float pdf
 #define SAMPLE_CDF(u, cdfBuffer, start, end, index, pdf) { \
-    while (start < end) { \
-        int mid = (start + end) / 2; \
-        if (u > cdfBuffer[mid]) { \
-            start = mid + 1; \
-        } else { \
-            end = mid; \
-        } \
-    } \
-    index = start; \
-    pdf = cdfBuffer[index] - (index > 0 ? cdfBuffer[index - 1] : 0.0); \
+   while (start < end) { \
+       int mid = (start + end) / 2; \
+       if (u > cdfBuffer[mid]) { \
+           start = mid + 1; \
+       } else { \
+           end = mid; \
+       } \
+   } \
+   index = start; \
+   pdf = cdfBuffer[index] - (index > start ? cdfBuffer[index - 1] : 0.0); \
 }
 
 //returns the solid angle.
@@ -173,7 +173,7 @@ float calculateSolidAngleFromAngularRadius(float radius) {
     return solidAngle;
 }
 
-vec3 sampleDirectionalLight(vec3 centerDir, float cosThetaMax, uint randState) {
+vec3 sampleDirectionalLight(vec3 centerDir, float cosThetaMax, inout uint randState) {
     float u1 = randFloat(randState);
     float u2 = randFloat(randState);
 
@@ -221,7 +221,7 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
         float dist = length(surfacePos - lightDataBuffer.data[i].position);
         float solidAngle = sampleBoundingSphere(lightDataBuffer.data[i].radius, dist);
         float emissionFactorLength = length(lightDataBuffer.data[i].emissionFactor);
-        float cdfWeight = (lightSelectionCDFWeightCounter + solidAngle * emissionFactorLength) / lightWeightSum;
+        float cdfWeight = lightSelectionCDFWeightCounter + (solidAngle * emissionFactorLength) / lightWeightSum;
         if (cdfWeight >= lightCDFRand && chosenWeight < 0) {
             lightIndex = i;
             chosenWeight = solidAngle * emissionFactorLength / lightWeightSum;
@@ -240,7 +240,7 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
     }
     lightSelectionPDF = chosenWeight;
     if (lightIndex == -1) {
-        emissionColor = SUN_RADIENCE * lightData.color.rgb;
+        emissionColor = SUN_RADIANCE * lightData.color.rgb;
         materialIndex = -1;
         lightDirectionPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * lightSelectionPDF;
         return sampleDirectionalLight(normalize(lightData.position).xyz, cos(directionalLightAngularRadius), randState);
@@ -301,11 +301,25 @@ vec3 getBurleyDiffuse(vec3 surfaceColor, float roughness, vec3 normal, vec3 view
 
     return surfaceColor * Fd / PI;
 }
+void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b) {
+    if (n.y < -0.999999) {
+        t = vec3(-1, 0, 0);
+        b = vec3(0, 0, -1);
+        return;
+    }
+    float a = 1.0 / (1.0 + n.y);
+    float d = -n.x * n.z * a;
+    t = vec3(1.0 - n.x * n.x * a, -n.x, d);
+    b = vec3(d, -n.z, 1.0 - n.z * n.z * a);
+}
+float getTriangleLODTexIndependent(vec2 t0, vec2 t1, vec2 t2, vec3 v0, vec3 v1, vec3 v2) {
+    float tt = abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
+    float pa = length(cross(v1 - v0, v2 - v0));
+    return 0.5 * log2(tt / pa);
+}
 
-float getTriangleLOD(float textureWidth, float textureHeight, vec2 t0, vec2 t1, vec2 t2, vec3 v0, vec3 v1, vec3 v2) {
-    float t = textureWidth * textureHeight * abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
-    float p = length(cross(v1 - v0, v2 - v0));
-    return 0.5 * log2(t / p);
+float getTriangleLODTexDependent(float textureWidth, float textureHeight) {
+    return 0.5 * log2(textureWidth * textureHeight);
 }
 vec3 getRayDirFromPixel(ivec2 pixelCoords) {
     vec2 uv = pixelCoords / vec2(gl_LaunchSizeEXT.xy);
@@ -327,11 +341,44 @@ float getTriangleCurvature(vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2)
     return (k01 + k12 + k20) / 3.0;
 }
 
-int getMipmapLODLevel(float textureWidth, float textureHeight, float hitDist, inout float coneWidth, inout float coneSpread,
-        vec3 normal, vec3 rayDir, vec2 t0, vec2 t1, vec2 t2, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2, float roughness, bool isPrimary) {
+float getAnisotropicTriangleCurvature(vec3 a1, vec3 a2, vec3 e0, vec3 e1, vec3 e2, vec3 normal, vec3 n0, vec3 n1, vec3 n2, float coneSpread, float width, vec3 rayDir) {
+    mat3 M = transpose(mat3(normalize(a1), normalize(a2), normal));
+    vec3 e01 = M * e0;
+    vec3 e12 = M * e1;
+    vec3 e20 = M * e2;
+
+    float lenA1 = length(a1);
+    float lenA2 = length(a2);
+    float lenA1A2 = lenA1 * lenA2;
+    float lenA1Squared = lenA1 * lenA1;
+    float lenA2Squared = lenA2 * lenA2;
+    float l01 = lenA1A2 / (sqrt(lenA1Squared * pow(e01.y, 2) + lenA2Squared * pow(e01.x, 2)));
+    float l12 = lenA1A2 / (sqrt(lenA1Squared * pow(e12.y, 2) + lenA2Squared * pow(e12.x, 2)));
+    float l20 = lenA1A2 / (sqrt(lenA1Squared * pow(e20.y, 2) + lenA2Squared * pow(e20.x, 2)));
+
+    float k01 = dot(n1 - n0, e0) / max(dot(e0, e0), 1e-8);
+    float k12 = dot(n2 - n1, e1) / max(dot(e1, e1), 1e-8);
+    float k20 = dot(n0 - n2, e2) / max(dot(e2, e2), 1e-8);
+
+    float lMax = max(l01, max(l12, l20));
+    k01 = k01 * (l01 / lMax);
+    k12 = k12 * (l12 / lMax);
+    k20 = k20 * (l20 / lMax);
+    float minKij = min(k01, min(k12, k20));
+    float maxKij = max(k01, max(k12, k20));
+    float bcMinKij = -2.0 * minKij * abs(width) / max(abs(dot(normal, -rayDir)), 1e-4);
+    float bcMaxKij = -2.0 * maxKij * abs(width) / max(abs(dot(normal, -rayDir)), 1e-4);
+    if (abs(coneSpread + bcMinKij) >= abs(coneSpread + bcMaxKij)) {
+        return minKij;
+    }
+    return maxKij;
+}
+
+float getMipmapLODLevel(float hitDist, inout float coneWidth, inout float coneSpread,
+       vec3 normal, vec3 rayDir, vec2 t0, vec2 t1, vec2 t2, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2, float roughness, bool isPrimary, bool isDiffuse) {
     float width = coneWidth + coneSpread * hitDist;
     coneWidth = width;
-
+    if (isDiffuse) roughness = 1.0f;
 
     float alpha = clamp(roughness, 0.0, 0.999);
     float sigma = sqrt(0.5 * (alpha * alpha) / (1.0 - alpha * alpha));
@@ -343,14 +390,79 @@ int getMipmapLODLevel(float textureWidth, float textureHeight, float hitDist, in
 
     coneSpread += roughnessSpread + curvatureSpread;
 
-    float lodMultiplier = 1.0f;
-    return int(lodMultiplier * (getTriangleLOD(textureWidth, textureHeight, t0, t1, t2, v0, v1, v2) + log2(abs(width)) - log2(abs(dot(normal, -rayDir)))));
+    return getTriangleLODTexIndependent(t0, t1, t2, v0, v1, v2) + log2(abs(width)) - log2(abs(dot(normal, -rayDir)));
+}
+
+vec2 getTexGradient(float u, float v, vec2 t0, vec2 t1, vec2 t2) {
+    return (1 - u - v) * t0 + u * t1 + v * t2;
+}
+
+void getAnisotropicGradients(float hitDist, inout float coneWidth, inout float coneSpread,
+       vec3 normal, vec3 rayDir, vec3 currPoint,
+        vec2 uv,
+        vec2 t0, vec2 t1, vec2 t2, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2, float roughness, bool isPrimary, bool isDiffuse, inout vec2 g1, inout vec2 g2) {
+    if (isDiffuse) roughness = 1.0f;
+
+    float alpha = clamp(roughness, 0.0, 0.999);
+    float width = coneWidth + coneSpread * hitDist;
+
+    coneWidth = width;
+    float sigma = sqrt(0.5 * (alpha * alpha) / (1.0 - alpha * alpha));
+
+    float roughnessSpread = isPrimary ? sigma * 0.25 : sigma;
+
+    vec3 h1 = rayDir - dot(normal, rayDir) * normal;
+    float h1Len = length(h1);
+    if (h1Len < 1e-4) {
+        vec3 fallbackT, fallbackB;
+        buildOrthonormalBasis(normal, fallbackT, fallbackB);
+        h1 = fallbackT;
+        h1Len = 1.0;
+    }
+
+    float p1 = max(length(h1 - dot(rayDir, h1) * rayDir), 0.0001);
+
+    float r = width / 2;
+
+    vec3 h2 = cross(normal, h1);
+    float p2 = max(length(h2 - dot(rayDir, h2) * rayDir), 0.0001);
+
+
+    float ratio1 = r / p1;
+    vec3 a1 = h1 * ratio1;
+
+    float ratio2 = r / p2;
+    vec3 a2 = h2 * ratio2;
+
+    vec3 e1 = v1 - v0;
+    vec3 e2 = v2 - v0;
+
+    vec3 ep1 = currPoint + a1 - v0;
+    vec3 ep2 = currPoint + a2 - v0;
+    float uvDenom = dot(normal, cross(e1, e2));
+    vec2 uv1 = vec2(dot(normal, cross(ep1, e2)), dot(normal, cross(e1, ep1))) / uvDenom;
+
+    vec2 uv2 = vec2(dot(normal, cross(ep2, e2)), dot(normal, cross(e1, ep2))) / uvDenom;
+    vec2 baseGradient = getTexGradient(uv.x, uv.y, t0, t1, t2);
+    g1 = (getTexGradient(uv1.x, uv1.y, t0, t1, t2) - baseGradient);
+    g2 = (getTexGradient(uv2.x, uv2.y, t0, t1, t2) - baseGradient);
+
+    float k = getAnisotropicTriangleCurvature(a1, a2, v1 - v0, v2 - v1, v0 - v2, normal, n0, n1, n2, coneSpread, width, rayDir);
+    float curvatureSpread = -2.0 * k * abs(width) / max(abs(dot(normal, -rayDir)), 1e-4);
+
+    coneSpread += roughnessSpread + curvatureSpread;
+
+}
+
+int applyTextureLOD(float lambdaT, float textureWidth, float textureHeight, int maxMipLevel) {
+    float lambda = lambdaT + getTriangleLODTexDependent(textureWidth, textureHeight);
+    return int(clamp(lambda, 0.0, float(maxMipLevel)));
 }
 
 
 
 
-vec2 getTexCoords(Material material, vec2 uv, uint primitiveIndex, uint i0, uint i1, uint i2, inout vec2 t0, inout vec2 t1, inout vec2 t2) {
+vec2 getTexCoords(in Material material, vec2 uv, uint primitiveIndex, uint i0, uint i1, uint i2, inout vec2 t0, inout vec2 t1, inout vec2 t2) {
     TextureCoordsBuffer textureCoords = TextureCoordsBuffer(material.textureCoordsAddress);
     t0 = textureCoords.data[i0];
     t1 = textureCoords.data[i1];
@@ -362,38 +474,37 @@ vec2 getTexCoords(Material material, vec2 uv, uint primitiveIndex, uint i0, uint
     return texCoords;
 }
 
-vec3 getSurfaceColor(Material material, vec2 texCoords, uint primitiveIndex, float lod) {
+vec3 getSurfaceColor(in Material material, vec2 texCoords, uint primitiveIndex, vec2 g1, vec2 g2) {
     if (material.baseColorIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
         return material.color.rgb * material.albedoFactor;
     }
 
-    vec3 color = textureLod(
+    vec3 color = textureGrad(
         baseColorTextures[nonuniformEXT(material.baseColorIndex)],
         texCoords,
-        lod
+        g1 * 2.0f, g2 * 2.0f
     ).rgb;
     return color * material.albedoFactor;
 
 }
 
-void applyMetallicRoughness(Material material, vec2 texCoords, uint primitiveIndex, inout float roughness, inout float metalness, float mipLevel) {
+void applyMetallicRoughness(in Material material, vec2 texCoords, uint primitiveIndex, inout float roughness, inout float metalness, vec2 g1, vec2 g2) {
     if (material.metallicRoughnessMapIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
         roughness = material.roughness;
         metalness = material.metalness;
         return;
     }
 
-    vec3 metallicRoughness =
-    textureLod(
+    vec3 metallicRoughness = textureGrad(
         metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)],
         texCoords,
-        mipLevel
+        g1 * 2.0f, g2 * 2.0f
     ).rgb;
     roughness = clamp(metallicRoughness.g, 0.0f, 1.0f);
     metalness = clamp(metallicRoughness.b, 0.0f, 1.0f);
 }
 
-void transformNormal(Material material, inout vec3 normal, vec2 uv, uint primitiveIndex, vec3 rayDir) {
+void transformNormal(in Material material, inout vec3 normal, vec2 uv, uint primitiveIndex, vec3 rayDir) {
     if (material.normalMapIndex < 0 || material.textureCoordsAddress <= 0 || material.indexAddress <= 0) {
        return;
     }
@@ -452,17 +563,7 @@ void transformNormal(Material material, inout vec3 normal, vec2 uv, uint primiti
 
 }
 
-void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b) {
-    if (n.y < -0.999999) {
-        t = vec3(-1, 0, 0);
-        b = vec3(0, 0, -1);
-        return;
-    }
-    float a = 1.0 / (1.0 + n.y);
-    float d = -n.x * n.z * a;
-    t = vec3(1.0 - n.x * n.x * a, -n.x, d);
-    b = vec3(d, -n.z, 1.0 - n.z * n.z * a);
-}
+
 
 vec3 getRandomDiffuseRayDir(vec2 rand, vec3 normal) {
     float r = sqrt(rand.x);
@@ -568,7 +669,7 @@ float getLightSelectionWeightSum(vec3 surfacePos) {
     return lightWeightSum;
 }
 
-vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR, float roughness, float metalness) {
+vec3 getSpecularBRDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR, float roughness, float metalness) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
@@ -579,7 +680,7 @@ vec3 getSpecularBRDF(Material material, vec3 surfaceColor, vec3 normal, vec3 mic
             / (max((4.0 * clamp(dot(normal, lightDir), 0, 1)) * clamp(dot(normal, view), 0, 1), 0.0001));
 }
 
-vec3 getBTDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta, float roughness, float metalness) {
+vec3 getBTDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta, float roughness, float metalness) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
@@ -600,14 +701,14 @@ vec3 getBTDF(Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetN
     return (D * G * (1.0 - F) * VdotH * LdotH * pow(n_t, 2)) / (pow(Ht, 2) * max(abs(dot(view, normal)), 1e-4) * abs(dot(normal, lightDir)));
 }
 
-float getFresnelValue(Material material, vec3 surfaceColor, vec3 normal, vec3 incomingLight, float metalness) {
+float getFresnelValue(in Material material, vec3 surfaceColor, vec3 normal, vec3 incomingLight, float metalness) {
     vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
     vec3 fresnel = fresnelSchlick(normal, incomingLight, f0);
     float fresnelValue = clamp((fresnel.x + fresnel.y + fresnel.z) / 3.0, 0.0, 1.0);
     return fresnelValue;
 }
 
-bool isDiffuseBounce(inout uint randState, vec3 microfacetNormal, vec3 incomingLight, Material material, vec3 surfaceColor) {
+bool isDiffuseBounce(inout uint randState, vec3 microfacetNormal, vec3 incomingLight, in Material material, vec3 surfaceColor) {
     float fresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, incomingLight, material.metalness), 1.0, material.metalness);
     float rand = randFloat(randState);
     return (rand >= fresnelValue);
@@ -669,10 +770,10 @@ int interiorListSize = 0;
 
 vec3 interiorPoints[NUM_MAX_BOUNCES];
 
-//const vec3 skyColor = vec3(0.4, 0.45, 0.9);
-const float SKY_RADIENCE = 1.0f;
+const vec3 skyColor = vec3(0.4, 0.45, 0.9);
+const float SKY_RADIANCE = 1.0f;
 const float SKY_MULTIPLIER = 12.0f;
-const vec3 skyColor = vec3(0, 0, 0);
+//const vec3 skyColor = vec3(0, 0, 0);
 
 
 void pushId(int materialId, vec3 position) {
@@ -732,26 +833,27 @@ void deleteId(int materialId) {
 
 
 void processBounce(
-    vec3 normal,
-    vec3 origin,
-    Material material,
-    int materialIndex,
-    vec3 surfaceColor,
-    vec3 prevRayDir,
-    inout uint randState,
-    bool shadowMiss,
-    inout vec3 throughput,
-    inout vec3 accumulatedLight,
-    inout vec3 rayDir,
-    vec3 lightDir,
-    vec3 emissionColor,
-    float lightDirectionPDF,
-    bool mis,
-    bool russianRoulette,
-    inout float bsdfPDF,
-    inout float lobePDF,
-    float roughness,
-    float metalness
+   in vec3 normal,
+   in vec3 origin,
+   in Material material,
+   in int materialIndex,
+   in vec3 surfaceColor,
+   in vec3 prevRayDir,
+   inout uint randState,
+   in bool shadowMiss,
+   inout vec3 throughput,
+   inout vec3 accumulatedLight,
+   inout vec3 rayDir,
+   in vec3 lightDir,
+   in vec3 emissionColor,
+   in float lightDirectionPDF,
+   in bool mis,
+   in bool russianRoulette,
+   inout float bsdfPDF,
+   inout float lobePDF,
+   in float roughness,
+   in float metalness,
+   inout bool outBounceDiffuse
 ) {
     vec3 microfacetNormal = SampleVndf_GGX(randFloat2(randState), -prevRayDir, roughness, normal);
     microfacetNormal = faceforward(microfacetNormal, prevRayDir, normal);
@@ -795,6 +897,7 @@ void processBounce(
             fresnelValue = 1.0;
         }
     }
+    outBounceDiffuse = diffuseBounce;
 
     if (diffuseBounce) {
         rayDir = normalize(getRandomDiffuseRayDir(randFloat2(randState), normal));
@@ -922,7 +1025,7 @@ void processBounce(
     }
 }
 
-vec3 rayTriangleIntersect(vec3 v0, vec3 v1, vec3 v2, vec3 origin, vec3 rayDir, inout float u, inout float v, inout float t) {
+vec3 rayTriangleIntersect(in vec3 v0, in vec3 v1, in vec3 v2, in vec3 origin, in vec3 rayDir, inout float u, inout float v, inout float t) {
     vec3 edge1 = v1 - v0;
     vec3 edge2 = v2 - v0;
 
@@ -939,7 +1042,7 @@ vec3 rayTriangleIntersect(vec3 v0, vec3 v1, vec3 v2, vec3 origin, vec3 rayDir, i
     return origin + rayDir * t;
 }
 
-vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3 n1, vec3 n2, vec3 rayDir) {
+vec3 getInterpolatedNormal(in vec3 origin, in vec3 v0, in vec3 v1, in vec3 v2, in vec3 n0, in vec3 n1, in vec3 n2, in vec3 rayDir) {
     vec3 ep = origin - v0;
     vec3 e0 = v1 - v0;
     vec3 e1 = v2 - v0;
@@ -957,7 +1060,7 @@ vec3 getInterpolatedNormal(vec3 origin, vec3 v0, vec3 v1, vec3 v2, vec3 n0, vec3
     return normal;
 }
 
-vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material, vec3 v0, vec3 v1, vec3 v2, uint i0, uint i1, uint i2) {
+vec3 calculateFaceNormal(in uint primitiveIndex, in vec3 rayDir, in Material material, in vec3 v0, in vec3 v1, in vec3 v2, in uint i0, in uint i1, in uint i2) {
     vec3 e1 = v1 - v0;
     vec3 e2 = v2 - v0;
     vec3 normal = normalize(cross(e1, e2));
@@ -970,335 +1073,344 @@ vec3 calculateFaceNormal(uint primitiveIndex, vec3 rayDir, Material material, ve
 
 
 
- void main() {
-     const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
-     vec3 lightSum = vec3(0.0);
-     vec3 cameraPosition = lightData.playerPos.xyz;
-     for (int n = 0; n < NUM_SAMPLES_PER_PIXEL; n++) {
-         clearInteriorList();
-         vec3 accumulatedLight = vec3(0.0);
-         float tMin = 0.001;
-         float tMax = 1000.0f;
+void main() {
+    const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+    vec3 lightSum = vec3(0.0);
+    vec3 cameraPosition = lightData.playerPos.xyz;
+    for (int n = 0; n < NUM_SAMPLES_PER_PIXEL; n++) {
+        clearInteriorList();
+        vec3 accumulatedLight = vec3(0.0);
+        float tMin = 0.001;
+        float tMax = 1000.0f;
 
-         rayPayload.distance = -1.0f;
-         rayPayload.materialIndex = 0;
-
-         vec3 visibility = texelFetch(visibilityBuffer, pixelCoords, 0).rgb;
-         uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
-
-         if (visibility.b < 0.0001) {
-             lightSum += skyColor * SKY_RADIENCE * SKY_MULTIPLIER;
-             continue;
-         }
-         int materialIndex = int(visibility.r);
-         Material material = materials.materialData[materialIndex];
-         uint primitiveIndex = uint(visibility.g);
-         VertexBuffer vertices = VertexBuffer(material.vertexAddress);
-         IndexBuffer indices = IndexBuffer(material.indexAddress);
-         NormalBuffer normals = NormalBuffer(material.normalAddress);
-         uint i0 = indices.data[primitiveIndex * 3 + 0];
-         uint i1 = indices.data[primitiveIndex * 3 + 1];
-         uint i2 = indices.data[primitiveIndex * 3 + 2];
-         vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
-         vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
-         vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
-         vec2 jitter = randFloat2(randState);
-         vec2 uv = vec2(gl_LaunchIDEXT.xy + jitter) / vec2(gl_LaunchSizeEXT.xy);
-         vec2 ndc = uv * 2.0 - 1.0;
-         vec4 rayClip = vec4(ndc, 1.0, 1.0);
-         vec4 rayDirWorld = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * rayClip);
-         vec3 rayDir = normalize(rayDirWorld.xyz / rayDirWorld.w - cameraPosition);
-
-         vec3 normal = normalize(cross(v1 - v0, v2 - v0));
-         if (dot(normal, -rayDir) < 0.0) normal = -normal;
-
-         //float t = dot(v0 - cameraPosition, normal) / dot(rayDir, normal);
-         //vec4 origin = vec4(cameraPosition + rayDir * t + normal * 0.0001, 1.0);
-         float u = 0;
-         float v = 0;
-         float t = 0;
-         vec4 origin = vec4(rayTriangleIntersect(v0, v1, v2, cameraPosition, rayDir, u, v, t), 1.0);
-
-         vec3 throughput = vec3(1.0);
-         vec3 view = rayDirWorld.xyz / rayDirWorld.w;
-         rayPayload.distance = -1.0f;
-
-         if (material.lightIndex >= 0) {
-             Light light = lightDataBuffer.data[material.lightIndex];
-             lightSum += vec3(light.emissionFactor * materials.materialData[light.materialIndex].color.rgb) * lightIntensity;
-             continue;
-         }
-
-         vec3 emissionColor;
-         float lightDirectionPDF;
-         int lightMaterialIndex;
-         float lightDist = -1.0f;
-         float bsdfPDF = 0.0f;
-         float lobePDF = 0.0f;
-         vec3 pos = origin.xyz;
-         vec3 lightDir = normalize(sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex));
-         if (lightDirectionPDF <= 0) continue;
-         traceRayEXT(
-             topLevelAS,
-             gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-             0xFF,
-             0,
-             0,
-             0,
-             origin.xyz,
-             tMin,
-             lightDir,
-             lightDist > 0 ? lightDist : tMax,
-             0
-         );
-
-         vec3 prevRayDir = rayDir;
-
-         vec3 dxDir = getRayDirFromPixel(ivec2(pixelCoords.x + 1, pixelCoords.y));
-         vec3 dyDir = getRayDirFromPixel(ivec2(pixelCoords.x, pixelCoords.y + 1));
-
-         float ux, vx, tx;
-         vec3 pX = rayTriangleIntersect(v0, v1, v2, cameraPosition, dxDir, ux, vx, tx);
-         float uy, vy, ty;
-         vec3 pY = rayTriangleIntersect(v0, v1, v2, cameraPosition, dyDir, uy, vy, ty);
-
-         vec3 normalX = normal;
-         vec3 normalY = normal;
-         vec3 n0 = normal;
-         vec3 n1 = normal;
-         vec3 n2 = normal;
-         if (INTERPOLATED_NORMALS) {
-             n0 = normalize(transpose(inverse(mat3(material.modelMatrix))) *
-                                            vec3(normals.data[i0*3+0], normals.data[i0*3+1], normals.data[i0*3+2]));
-             n1 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i1*3+0], normals.data[i1*3+1], normals.data[i1*3+2]));
-             n2 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
-             normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
-             normalX = getInterpolatedNormal(pX, v0, v1, v2, n0, n1, n2, dxDir);
-             normalY = getInterpolatedNormal(pY, v0, v1, v2, n0, n1, n2, dyDir);
-         }
-         //transformNormal(material, normal, vec2(u, v), primitiveIndex, rayDir);
-
-         vec2 t0 = vec2(0.0f);
-         vec2 t1 = vec2(0.0f);
-         vec2 t2 = vec2(0.0f);
-
-         float mipLodColor = 0;
-         float mipLodMetallicRoughness = 0;
-         float mrConeWidth = 0.0f;
-         float baseColorConeWidth = 0.0f;
-         float alpha = max(acos(clamp(dot(rayDir, dxDir), -1.0, 1.0)),
-                           acos(clamp(dot(rayDir, dyDir), -1.0, 1.0)));
-
-         float coneColorSpread = alpha;
-         float mrConeSpread = alpha;
-         vec2 texCoords = vec2(0.0);
-         if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
-            texCoords = getTexCoords(material, vec2(u, v), primitiveIndex, i0, i1, i2, t0, t1, t2);
-
-         }
-
-         if (material.metallicRoughnessMapIndex >= 0) {
-            ivec2 mrTexSize = textureSize(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)], 0);
-            int mipLevel = getMipmapLODLevel(
-               float(mrTexSize.x), float(mrTexSize.y),
-               t,
-               mrConeWidth,
-               mrConeSpread,
-               normal, rayDir,
-               t0, t1, t2,
-               v0, v1, v2, n0, n1, n2, 0.0, true
-            );
-            mipLodMetallicRoughness = clamp(float(mipLevel), 0.0, float(textureQueryLevels(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)]) - 1));
-         }
-
-         if (material.baseColorIndex >= 0) {
-             ivec2 baseColorTexSize = textureSize(baseColorTextures[nonuniformEXT(material.baseColorIndex)], 0);
-             int mipLevel = getMipmapLODLevel(
-                float(baseColorTexSize.x), float(baseColorTexSize.y),
-                t,
-                baseColorConeWidth,
-                coneColorSpread,
-                normal, rayDir,
-                t0, t1, t2,
-                v0, v1, v2, n0, n1, n2, 0.0, true
-             );
-             mipLodColor = clamp(float(mipLevel), 0.0, float(textureQueryLevels(baseColorTextures[nonuniformEXT(material.baseColorIndex)]) - 1));
-         }
-         rayDir = vec3(0.0);
-
-         float metalness;
-         float roughness;
-         applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, mipLodMetallicRoughness);
-         processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex, mipLodColor), prevRayDir, randState,
-                         rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                         throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, roughness != 0, false, bsdfPDF, lobePDF, roughness, metalness);
-         //if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) throughput = vec3(0.0f);
+        rayPayload.distance = -1.0f;
+        uint randState = initRandState(pixelCoords, pushConstants.frameCount + uint(n * 97));
+        bool prevBounceDiffuse = false;
 
 
-         if (throughput == vec3(0)) {
-            lightSum += accumulatedLight;
+        vec2 jitter = randFloat2(randState);
+        vec2 uv = vec2(pixelCoords + jitter) / vec2(gl_LaunchSizeEXT.xy);
+        vec2 ndc = uv * 2.0 - 1.0;
+        vec4 rayClip = vec4(ndc, 1.0, 1.0);
+        vec4 rayDirWorld = inverseViewProj.invViewMatrix * (inverseViewProj.invProjMatrix * rayClip);
+        vec3 view = rayDirWorld.xyz / rayDirWorld.w;
+        vec3 rayDir = normalize(view - cameraPosition);
+
+
+        traceRayEXT(
+           topLevelAS,
+           gl_RayFlagsOpaqueEXT,
+           0xFF, 0, 0, 0,
+           cameraPosition, tMin,
+           rayDir, tMax, 0
+        );
+
+        float u = rayPayload.uv.x;
+        float v = rayPayload.uv.y;
+        float t = rayPayload.distance;
+         if (t < 0.0001) {
+            lightSum += skyColor * SKY_RADIANCE * SKY_MULTIPLIER;
             continue;
          }
-         for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
-             rayPayload.distance = -1.0f;
-             bool mis = roughness != 0;
-             traceRayEXT(
-                 topLevelAS,
-                 gl_RayFlagsOpaqueEXT,
-                 0xFF,
-                 0,
-                 0,
-                 0,
-                 origin.xyz,
-                 tMin,
-                 rayDir,
-                 tMax,
-                 0
-             );
-             prevRayDir = rayDir;
-             material = materials.materialData[rayPayload.materialIndex];
-             primitiveIndex = rayPayload.primitiveIndex;
+        int materialIndex = int(rayPayload.materialIndex);
+        Material material = materials.materialData[materialIndex];
+        uint primitiveIndex = rayPayload.primitiveIndex;
+        VertexBuffer vertices = VertexBuffer(material.vertexAddress);
+        IndexBuffer indices = IndexBuffer(material.indexAddress);
+        NormalBuffer normals = NormalBuffer(material.normalAddress);
+        uint i0 = indices.data[primitiveIndex * 3 + 0];
+        uint i1 = indices.data[primitiveIndex * 3 + 1];
+        uint i2 = indices.data[primitiveIndex * 3 + 2];
+        vec3 v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
+        vec3 v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
+        vec3 v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
+        vec3 normal = normalize(cross(v1 - v0, v2 - v0));
+        vec3 origin = cameraPosition + rayDir * t;
+        if (dot(normal, -rayDir) < 0.0) normal = -normal;
 
-             vertices = VertexBuffer(material.vertexAddress);
-             indices = IndexBuffer(material.indexAddress);
-             i0 = indices.data[rayPayload.primitiveIndex * 3 + 0];
-             i1 = indices.data[rayPayload.primitiveIndex * 3 + 1];
-             i2 = indices.data[rayPayload.primitiveIndex * 3 + 2];
-             v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
-             v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
-             v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
+        vec3 throughput = vec3(1.0);
 
-             normal = calculateFaceNormal(rayPayload.primitiveIndex, rayDir, material, v0, v1, v2, i0, i1, i2);
-             materialIndex = int(rayPayload.materialIndex);
-             vec3 prevOrigin = origin.xyz;
-             origin = vec4(origin.xyz + rayDir * rayPayload.distance, 1);
-             vec2 uv = rayPayload.uv;
-             texCoords = vec2(0.0f);
-             mipLodMetallicRoughness = 0.0f;
-             mipLodColor = 0.0f;
-             if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
-                 texCoords = getTexCoords(material, uv, primitiveIndex, i0, i1, i2, t0, t1, t2);
-             }
+        if (material.lightIndex >= 0) {
+            Light light = lightDataBuffer.data[material.lightIndex];
+            lightSum += vec3(light.emissionFactor * materials.materialData[light.materialIndex].color.rgb) * lightIntensity;
+            continue;
+        }
+
+        vec3 emissionColor;
+        float lightDirectionPDF;
+        int lightMaterialIndex;
+        float lightDist = -1.0f;
+        float bsdfPDF = 0.0f;
+        float lobePDF = 0.0f;
+        vec3 pos = origin.xyz;
+        vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
+        if (lightDirectionPDF <= 0) continue;
+        traceRayEXT(
+            topLevelAS,
+            gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+            0xFF,
+            0,
+            0,
+            0,
+            origin.xyz,
+            tMin,
+            lightDir,
+            lightDist > 0 ? lightDist : tMax,
+            0
+        );
+
+        vec3 prevRayDir = rayDir;
 
 
-             vec3 n0 = normal;
-             vec3 n1 = normal;
-             vec3 n2 = normal;
-             if (INTERPOLATED_NORMALS) {
-                normals = NormalBuffer(material.normalAddress);
-                n0 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i0*3+0], normals.data[i0*3+1], normals.data[i0*3+2]));
-                n1 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i1*3+0], normals.data[i1*3+1], normals.data[i1*3+2]));
-                n2 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
-             }
+        vec3 n0 = normal;
+        vec3 n1 = normal;
+        vec3 n2 = normal;
+        if (INTERPOLATED_NORMALS) {
+            n0 = normalize(transpose(inverse(mat3(material.modelMatrix))) *
+                                           vec3(normals.data[i0*3+0], normals.data[i0*3+1], normals.data[i0*3+2]));
+            n1 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i1*3+0], normals.data[i1*3+1], normals.data[i1*3+2]));
+            n2 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
+            normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
+        }
 
-             if (material.baseColorIndex >= 0) {
-                 ivec2 baseColorTexSize = textureSize(baseColorTextures[nonuniformEXT(material.baseColorIndex)], 0);
-                 int mipLevel = getMipmapLODLevel(
-                     float(baseColorTexSize.x), float(baseColorTexSize.y),
-                     rayPayload.distance,
-                     baseColorConeWidth,
-                     coneColorSpread,
-                     normal, rayDir,
-                     t0, t1, t2,
-                     v0, v1, v2, n0, n1, n2, roughness, false
-                 );
-                 mipLodColor = clamp(float(mipLevel), 0.0, float(textureQueryLevels(baseColorTextures[nonuniformEXT(material.baseColorIndex)]) - 1));
-             }
+        //transformNormal(material, normal, vec2(u, v), primitiveIndex, rayDir);
 
-             if (material.metallicRoughnessMapIndex >= 0) {
-                ivec2 mrTexSize = textureSize(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)], 0);
-                    int mipLevel = getMipmapLODLevel(
-                    float(mrTexSize.x), float(mrTexSize.y),
+        vec2 t0 = vec2(0.0f);
+        vec2 t1 = vec2(0.0f);
+        vec2 t2 = vec2(0.0f);
+
+        //float mipLodColor = 0;
+        //float mipLodMetallicRoughness = 0;
+        float coneWidth = 0.0f;
+
+        vec2 texCoords = vec2(0.0);
+        vec3 dxDir = getRayDirFromPixel(ivec2(pixelCoords.x + 1, pixelCoords.y));
+        vec3 dyDir = getRayDirFromPixel(ivec2(pixelCoords.x, pixelCoords.y + 1));
+        float alpha = max(acos(clamp(dot(rayDir, dxDir), -1.0, 1.0)),
+                          acos(clamp(dot(rayDir, dyDir), -1.0, 1.0)));
+
+
+        float coneSpread = 2.0 * tan(min(alpha, PI * 0.5 - 1e-4) * 0.5);
+        vec2 g1, g2;
+        if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
+           texCoords = getTexCoords(material, vec2(u, v), primitiveIndex, i0, i1, i2, t0, t1, t2);
+           getAnisotropicGradients(
+                t, coneWidth, coneSpread,
+                normal, rayDir, pos,
+                vec2(u, v),
+                t0, t1, t2, v0, v1, v2, n0, n1, n2,
+                0.0, true, false,
+                g1, g2
+           );
+        }
+
+        /*
+        float lambdaT = 0.0;
+        if (material.metallicRoughnessMapIndex >= 0 || material.baseColorIndex >= 0) {
+           lambdaT = getMipmapLODLevel(
+              t,
+              coneWidth,
+              coneSpread,
+              normal, rayDir,
+              t0, t1, t2,
+              v0, v1, v2, n0, n1, n2, 0.0, true, false
+           );
+        }
+
+        if (material.metallicRoughnessMapIndex >= 0) {
+           ivec2 mrTexSize = textureSize(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)], 0);
+           mipLodMetallicRoughness = float(applyTextureLOD(lambdaT, float(mrTexSize.x), float(mrTexSize.y), textureQueryLevels(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)]) - 1));
+        }
+
+        if (material.baseColorIndex >= 0) {
+            ivec2 baseColorTexSize = textureSize(baseColorTextures[nonuniformEXT(material.baseColorIndex)], 0);
+            mipLodColor = float(applyTextureLOD(lambdaT, float(baseColorTexSize.x), float(baseColorTexSize.y), textureQueryLevels(baseColorTextures[nonuniformEXT(material.baseColorIndex)]) - 1));
+        }
+        */
+
+        rayDir = vec3(0.0);
+
+        float metalness;
+        float roughness;
+        applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, g1, g2);
+         /** anisotropy debug visualization stuff
+         lightSum += vec3(length(g1) / max(length(g2), 1e-5),0.0f, 0.0f);
+         continue;
+         **/
+        processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex, g1, g2), prevRayDir, randState,
+                        rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
+                        throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, roughness != 0, false, bsdfPDF, lobePDF, roughness, metalness, prevBounceDiffuse);
+        //if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) throughput = vec3(0.0f);
+
+
+        if (throughput == vec3(0)) {
+           lightSum += accumulatedLight;
+           continue;
+        }
+        for (int i = 0; i < NUM_MAX_BOUNCES; i++) {
+            if (throughput == vec3(0)) {
+                break;
+            }
+            rayPayload.distance = 0.0f;
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsOpaqueEXT,
+                0xFF,
+                0,
+                0,
+                0,
+                origin.xyz,
+                tMin,
+                rayDir,
+                tMax,
+                0
+            );
+            prevRayDir = rayDir;
+            material = materials.materialData[rayPayload.materialIndex];
+            primitiveIndex = rayPayload.primitiveIndex;
+            bool mis = roughness != 0;
+            vertices = VertexBuffer(material.vertexAddress);
+            indices = IndexBuffer(material.indexAddress);
+            i0 = indices.data[rayPayload.primitiveIndex * 3 + 0];
+            i1 = indices.data[rayPayload.primitiveIndex * 3 + 1];
+            i2 = indices.data[rayPayload.primitiveIndex * 3 + 2];
+            v0 = (material.modelMatrix * vec4(vertices.data[i0*3+0], vertices.data[i0*3+1], vertices.data[i0*3+2], 1.0)).xyz;
+            v1 = (material.modelMatrix * vec4(vertices.data[i1*3+0], vertices.data[i1*3+1], vertices.data[i1*3+2], 1.0)).xyz;
+            v2 = (material.modelMatrix * vec4(vertices.data[i2*3+0], vertices.data[i2*3+1], vertices.data[i2*3+2], 1.0)).xyz;
+            normal = calculateFaceNormal(rayPayload.primitiveIndex, rayDir, material, v0, v1, v2, i0, i1, i2);
+            materialIndex = int(rayPayload.materialIndex);
+            vec3 prevOrigin = origin;
+            origin += rayDir * rayPayload.distance;
+            vec2 uv = rayPayload.uv;
+            texCoords = vec2(0.0f);
+            //mipLodMetallicRoughness = 0.0f;
+            //mipLodColor = 0.0f;
+            if (material.baseColorIndex >= 0 || material.metallicRoughnessMapIndex >= 0) {
+                texCoords = getTexCoords(material, uv, primitiveIndex, i0, i1, i2, t0, t1, t2);
+            }
+
+
+            vec3 n0 = normal;
+            vec3 n1 = normal;
+            vec3 n2 = normal;
+            if (INTERPOLATED_NORMALS) {
+               normals = NormalBuffer(material.normalAddress);
+               n0 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i0*3+0], normals.data[i0*3+1], normals.data[i0*3+2]));
+               n1 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i1*3+0], normals.data[i1*3+1], normals.data[i1*3+2]));
+               n2 = normalize(transpose(inverse(mat3(material.modelMatrix))) * vec3(normals.data[i2*3+0], normals.data[i2*3+1], normals.data[i2*3+2]));
+            }
+
+
+            /*
+            lambdaT = 0.0;
+            if (material.baseColorIndex >= 0 || material.metallicRoughnessMapIndex >= 0) {
+                lambdaT = getMipmapLODLevel(
                     rayPayload.distance,
-                    mrConeWidth,
-                    mrConeSpread,
+                    coneWidth,
+                    coneSpread,
                     normal, rayDir,
                     t0, t1, t2,
-                    v0, v1, v2, n0, n1, n2, roughness, false
+                    v0, v1, v2, n0, n1, n2, roughness, false, prevBounceDiffuse
                 );
-                mipLodMetallicRoughness = clamp(float(mipLevel), 0.0, float(textureQueryLevels(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)]) - 1));
+            }
 
+            if (material.baseColorIndex >= 0) {
+                ivec2 baseColorTexSize = textureSize(baseColorTextures[nonuniformEXT(material.baseColorIndex)], 0);
+                mipLodColor = float(applyTextureLOD(lambdaT, float(baseColorTexSize.x), float(baseColorTexSize.y), textureQueryLevels(baseColorTextures[nonuniformEXT(material.baseColorIndex)]) - 1));
+            }
 
-             }
+            if (material.metallicRoughnessMapIndex >= 0) {
+               ivec2 mrTexSize = textureSize(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)], 0);
+               mipLodMetallicRoughness = float(applyTextureLOD(lambdaT, float(mrTexSize.x), float(mrTexSize.y), textureQueryLevels(metallicRoughnessMapTextures[nonuniformEXT(material.metallicRoughnessMapIndex)]) - 1));
+            }
+            */
 
+            if (material.baseColorIndex >= 0 || material.metallicRoughnessMapIndex >= 0) {
+                getAnisotropicGradients(
+                    rayPayload.distance, coneWidth, coneSpread,
+                    normal, rayDir, origin.xyz,
+                    uv,
+                    t0, t1, t2, v0, v1, v2, n0, n1, n2,
+                    roughness, false, prevBounceDiffuse,
+                    g1, g2
+                );
+            }
 
-             applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, mipLodMetallicRoughness);
-             if (INTERPOLATED_NORMALS) {
-                normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
-             }
-             //transformNormal(material, normal, uv, primitiveIndex, rayDir);
+            applyMetallicRoughness(material, texCoords, primitiveIndex, roughness, metalness, g1, g2);
+            if (INTERPOLATED_NORMALS) {
+               normal = getInterpolatedNormal(origin.xyz, v0, v1, v2, n0, n1, n2, prevRayDir);
+            }
+            //transformNormal(material, normal, uv, primitiveIndex, rayDir);
+            if (material.lightIndex >= 0) {
+                Light light = lightDataBuffer.data[material.lightIndex];
+                float misWeight = 1.0f;
+                float multiplier = 1.0f;
+                float dist = length(prevOrigin - light.position);
+                float lightSelectionPDF = sampleBoundingSphere(light.radius, dist) * length(light.emissionFactor) / getLightSelectionWeightSum(prevOrigin);
+                float solidAnglePDF = getSolidAnglePDF(light, prevRayDir, origin.xyz, prevOrigin, normal);
+                float lightPDF = lightSelectionPDF * solidAnglePDF;
+                if (mis) {
+                   misWeight = bsdfPDF / (bsdfPDF + lightPDF);
+                   multiplier = lobePDF / bsdfPDF;
+                }
+                accumulatedLight += lightIntensity * light.emissionFactor * materials.materialData[light.materialIndex].color.rgb * throughput * multiplier * misWeight;
+                break;
+            }
 
-             if (material.lightIndex >= 0) {
-                 Light light = lightDataBuffer.data[material.lightIndex];
+            if (rayPayload.distance < 0) {
+                 float cosDir = cos(directionalLightAngularRadius);
+                 float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
                  float misWeight = 1.0f;
                  float multiplier = 1.0f;
-                 float dist = length(prevOrigin - light.position);
-                 float lightSelectionPDF = sampleBoundingSphere(light.radius, dist) * length(light.emissionFactor) / getLightSelectionWeightSum(prevOrigin);
-                 float solidAnglePDF = getSolidAnglePDF(light, prevRayDir, origin.xyz, prevOrigin, normal);
-                 float lightPDF = lightSelectionPDF * solidAnglePDF;
-                 if (mis) {
-                    misWeight = bsdfPDF / (bsdfPDF + lightPDF);
-                    multiplier = lobePDF / bsdfPDF;
+                 if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
+                     float directionalLightSolidAngleWeight = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius) / getLightSelectionWeightSum(prevOrigin);
+                     float lightPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * directionalLightSolidAngleWeight;
+                     if (mis) {
+                       misWeight = bsdfPDF / (bsdfPDF + lightPDF);
+                       multiplier = lobePDF / bsdfPDF;
+                     }
+                     accumulatedLight += lightIntensity * lightData.color.rgb * SUN_RADIANCE * throughput * multiplier * misWeight;
+                 } else {
+                     accumulatedLight += skyColor * throughput * SKY_RADIANCE;
                  }
-                 accumulatedLight += lightIntensity * light.emissionFactor * materials.materialData[light.materialIndex].color.rgb * throughput * multiplier * misWeight;
                  break;
-             }
+            }
+            mis = roughness != 0;
+            int lightMaterialIndex;
+            lightDist = -1.0f;
+            vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
 
-             if (rayPayload.distance < 0) {
-                  float cosDir = cos(directionalLightAngularRadius);
-                  float sampleDiff = dot(rayDir, normalize(lightData.position).xyz);
-                  float misWeight = 1.0f;
-                  float multiplier = 1.0f;
-                  if (sampleDiff > cosDir && length(lightData.color.rgb) > 0) {
-                      float directionalLightSolidAngleWeight = SUN_ANGLE_WEIGHT_MULTIPLIER * calculateSolidAngleFromAngularRadius(directionalLightAngularRadius) / getLightSelectionWeightSum(prevOrigin);
-                      float lightPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * directionalLightSolidAngleWeight;
-                      if (mis) {
-                        misWeight = bsdfPDF / (bsdfPDF + lightPDF);
-                        multiplier = lobePDF / bsdfPDF;
-                      }
-                      accumulatedLight += lightIntensity * lightData.color.rgb * throughput * multiplier * misWeight;
-                  } else {
-                      accumulatedLight += skyColor * throughput * SKY_RADIENCE;
-                  }
-                  break;
-             }
+            if (lightDirectionPDF <= 0) break;
 
-             mis = roughness != 0;
-             int lightMaterialIndex;
-             lightDist = -1.0f;
-             vec3 lightDir = normalize(sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex));
+           vec3 pos = origin.xyz;
+           if (mis) {
+               traceRayEXT(
+                    topLevelAS,
+                    gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+                    0xFF,
+                    0,
+                    0,
+                    0,
+                    origin.xyz,
+                    tMin,
+                    lightDir,
+                    lightDist > 0 ? lightDist : tMax,
+                    0
+               );
+            }
 
-             if (lightDirectionPDF <= 0) break;
+            processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex, g1, g2), prevRayDir, randState,
+                roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
+                throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, i >= 2, bsdfPDF, lobePDF, roughness, metalness, prevBounceDiffuse);
 
-            vec3 pos = origin.xyz;
-            if (mis) {
-                traceRayEXT(
-                     topLevelAS,
-                     gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-                     0xFF,
-                     0,
-                     0,
-                     0,
-                     origin.xyz,
-                     tMin,
-                     lightDir,
-                     lightDist > 0 ? lightDist : tMax,
-                     0
-                );
-             }
+            if (throughput == vec3(0)) {
+               break;
+            }
+        }
 
-             processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex, mipLodColor), prevRayDir, randState,
-                 roughness != 0 && (rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex),
-                 throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, i >= 2, bsdfPDF, lobePDF, roughness, metalness);
+        lightSum += accumulatedLight;
+    }
 
-             if (throughput == vec3(0)) {
-                break;
-             }
-         }
-
-         lightSum += accumulatedLight;
-     }
-
-     vec3 finalLight = lightSum / NUM_SAMPLES_PER_PIXEL;
-     imageStore(storageImage, pixelCoords, vec4(finalLight, 1.0));
- }
+    vec3 finalLight = lightSum / NUM_SAMPLES_PER_PIXEL;
+    imageStore(storageImage, pixelCoords, vec4(finalLight, 1.0));
+}

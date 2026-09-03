@@ -70,8 +70,8 @@ namespace BarrierUsage {
     constexpr uint32_t transferWrite = transfer | write | transferStage;
     constexpr uint32_t presentColor = color | none | present | bottomOfPipe;
     constexpr uint32_t presentDepth = depth | none | present | bottomOfPipe;
-    constexpr uint32_t colorNone =  color | none | topOfPipe;
-    constexpr uint32_t depthNone =  depth | none | topOfPipe;
+    constexpr uint32_t colorNone =  color | none | colorAttachmentOutput;
+    constexpr uint32_t depthNone =  depth | none | colorAttachmentOutput;
     constexpr uint32_t storageColorNone = none | color | allCommands;
 }
 

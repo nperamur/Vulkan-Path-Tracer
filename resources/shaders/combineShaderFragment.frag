@@ -13,11 +13,11 @@ layout(location = 0) out vec4 outColor;
 layout(location = 0) in vec2 passTextureCoords;
 
 void main() {
-    vec4 first = texture(firstColor, passTextureCoords);
+    //vec4 first = texture(firstColor, passTextureCoords);
     vec4 second = texture(secondColor, passTextureCoords);
     vec4 history = texture(historyBuffer, passTextureCoords);
 
-    vec4 lightFactor = vec4(0.50) + 0.5 * second;
+    //vec4 lightFactor = vec4(0.50) + 0.5 * second;
     //outColor = history + (first * lightFactor - history) * 0.1;
     //outColor = first * lightFactor;
     //outColor = history + (second - history) * 0.1;

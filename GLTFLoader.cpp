@@ -14,6 +14,7 @@ GLTFLoader::GLTFLoader(TextureBufferManager &textureBufferManager) : textureBuff
 std::vector<Entity> GLTFLoader::load(std::string name, Loader &loader, vk::raii::Device &device,
                                      vk::raii::PhysicalDevice &physicalDevice, MVP& mvp, float albedoMultiplier, float lightMultiplier, std::vector<float>& emissiveVertices, std::vector<LightData>& lightData) {
     std::string fullPathStr = "resources/GLTFModels/" + name + "/" + name + ".gltf";
+    std::cout << "Loading model: " + name << std::endl;
     std::filesystem::path gltfPath(fullPathStr);
 
 

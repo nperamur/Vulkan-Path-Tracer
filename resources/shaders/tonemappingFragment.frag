@@ -136,12 +136,14 @@ vec3 agxPunchy(vec3 color) {
 vec3 agxCustom(vec3 color) {
   return agxCdl(color, vec3(1.0), vec3(0.0), vec3(0.8), 1.6);
 }
+
+
 // ---------------------------------------------------------------------
 
 void main() {
     vec3 baseColor = texture(baseImage, passTextureCoords).rgb;
-    outColor = vec4(agxCustom(baseColor * 0.15), 1.0);
+    outColor = vec4(agxCustom(baseColor * 0.1), 1.0);
     //outColor = vec4(agx(baseColor * 0.25), 1.0);
-    //outColor = vec4(ACESFilmicToneMapping(baseColor * 2), 1.0);
+    //outColor = vec4(ACESFilmicToneMapping(baseColor * 0.25), 1.0);
 
 }

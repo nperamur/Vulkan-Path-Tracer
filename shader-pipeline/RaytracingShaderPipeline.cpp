@@ -73,7 +73,6 @@ void RaytracingShaderPipeline::setUpPipeline() {
     std::array<vk::RayTracingShaderGroupCreateInfoKHR, 3> groups = {raygenGroup, missGroup, hitGroup};
 
 
-    //TODO: max pipeline recursion depth is number of bounces. I might want to change this number later
     uint32_t count =
          ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers) ? 1 : 0) +
          ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers) ? 1 : 0);

@@ -101,6 +101,7 @@ class ShaderPipeline {
         std::array<std::unordered_map<DescriptorBinding, vk::Buffer, DescriptorKeyHash>, 3> uboBuffers;
         std::array<std::unordered_map<DescriptorBinding, VmaAllocation, DescriptorKeyHash>, 3> storageBufferAllocations;
         std::array<std::unordered_map<DescriptorBinding, vk::Buffer, DescriptorKeyHash>, 3> storageBuffers;
+
         DescriptorsInfo desc;
         std::string identifier;
         std::unordered_map<VkBuffer, void*> persistentUBOPointers;

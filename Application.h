@@ -26,7 +26,13 @@ struct InFlightImageAvailabilitySemaphoreInfo {
     int acquireIndex;
     vk::Semaphore semaphore;
 };
-
+namespace std {
+    template<> struct hash<vk::Semaphore> {
+        size_t operator()(vk::Semaphore const& s) const noexcept {
+            return std::hash<VkSemaphore>{}(static_cast<VkSemaphore>(s));
+        }
+    };
+}
 //This class owns and manages the lifecycle of the application
 //It handles window management, initialization of vulkan (i.e. devices, swap chain, command buffers ect.) and coordination of systems
 class Application {
@@ -50,6 +56,7 @@ class Application {
     std::array<vk::Semaphore, 3> imageAvailableSemaphoresInFlight;
     //note to self: endCount, imageavailabilitysemaphore
     std::vector<InFlightImageAvailabilitySemaphoreInfo> inFlightAvailabilitySemaphores;
+    std::unordered_map<vk::Semaphore, uint64_t> semaphoreCounter;
     // VkImage depthImage;
     // VmaAllocation depthImageAllocation;
     std::array<VkImage, 3> depthImages;
