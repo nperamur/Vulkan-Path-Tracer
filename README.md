@@ -4,7 +4,7 @@ Diffuse lighting uses cosine weighted importance sampling and specular uses GGX 
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
 
-<img width="1056" height="957" alt="Screenshot 2026-06-03 195334" src="https://github.com/user-attachments/assets/603855ac-262e-4d97-be6e-9c7befb09b55" />
+<img alt="Screenshot 2026-09-02 212653" src="https://github.com/user-attachments/assets/e3b02af2-92c5-4a4b-9e93-07cfc35ddd21" />
 
 | | Low Roughness | High Roughness |
 |---|---|---|
@@ -14,7 +14,13 @@ The pathtracer is progressive, meaning you can move the camera and watch the ima
 
 <br>
 
-#### Update: Added Area Lights support and textured glTF model loading
+
+The render below further demonstrates how the path tracer handles different material properties. In the image, the teapot shows rough reflections, which appear blurrier, while the sphere shows smooth reflections. The cube demonstrates a rougher, more diffuse material with less reflectivity.
+
+<img width="400" alt="Screenshot 2026-07-20 012948" src="https://github.com/user-attachments/assets/9fba72ff-575b-42bf-9412-5e7f45aeeaf3" />
+
+
+#### Update: Added Area Lights support, textured glTF model loading, and transmission for refractive materials
 
 Renders demonstrating these additions are shown below.
 
@@ -22,19 +28,25 @@ Renders demonstrating these additions are shown below.
   <tr>
     <td align="center"><b>Cornell box (Area lights)</b></td>
     <td align="center"><b>Textured Sponza</b></td>
+    <td align="center"><b>Cornell Box Spheres (Transmission on red-tinted glass sphere)</b></td>
   </tr>
   <tr>
-    <td><img width="400"  alt="Screenshot 2026-06-28 235308" src="https://github.com/user-attachments/assets/f63f585f-ae94-4e88-a200-dc17693148b5" /></td>
-    <td><img height="400" alt="Screenshot 2026-07-25 003523" src="https://github.com/user-attachments/assets/69e9ba53-dcd0-42ed-bef2-e29a1561195f" /></td>
+    <td><img width="400" alt="Screenshot 2026-09-02 000102" src="https://github.com/user-attachments/assets/37957de1-5683-4b93-81cf-639904c3e2c8" /></td>
+    <td><img height="400" alt="Screenshot 2026-09-02 212653" src="https://github.com/user-attachments/assets/e3b02af2-92c5-4a4b-9e93-07cfc35ddd21" /></td>
+    <td><img width="400" alt="Screenshot 2026-08-17 185006" src="https://github.com/user-attachments/assets/81ecfd03-baa8-468d-8aaf-7bcbfabfcb5d" /></td>
+
   </tr>
 </table>
 
 
 
-**Importance Sampling**: We use the following techniques to increase the convergence speed of the render.
+
+**Importance Sampling**: I used the following techniques to reduce variance and increase the convergence speed of the render.
 - Cosine-weighted diffuse sampling
-- GGX VNDF sampling for specular
+- GGX VNDF sampling for reflections and transmission
 - Multiple importance sampling with next event estimation, using the balance heuristic
+- Throughput-based russian roulette
+
 
 
 **Limitations**:

@@ -18,9 +18,9 @@ void main() {
     //outColor = history + (first * lightFactor - history) * 0.1;
     //outColor = first * lightFactor;
     //outColor = history + (second - history) * 0.1;
-    if (pushConstants.frameCount < 3) {
+    if (pushConstants.frameCount <= 1) {
         outColor = second;
     } else {
-        outColor = history + (second - history) / float(pushConstants.frameCount - 2);
+        outColor = history + (second - history) / float(pushConstants.frameCount);
     }
 }

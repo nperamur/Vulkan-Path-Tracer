@@ -781,10 +781,10 @@ int interiorListSize = 0;
 
 vec3 interiorPoints[NUM_MAX_BOUNCES];
 
-const vec3 skyColor = vec3(0.4, 0.45, 0.9);
+//const vec3 skyColor = vec3(0.4, 0.45, 0.9);
 const float SKY_RADIANCE = 1.0f;
 const float SKY_MULTIPLIER = 12.0f;
-//const vec3 skyColor = vec3(0, 0, 0);
+const vec3 skyColor = vec3(0, 0, 0);
 
 
 void pushId(int materialId, vec3 position) {
@@ -975,7 +975,7 @@ void processBounce(
 
     //TODO: Test and read stained glass from gltf file rather than relying soley on hardcoded values
     if (material.transmissionFactor > 0.0 && !entering && transmissionBounce) {
-        float absorption = 0.8f;
+        float absorption = 1.8f;
         float thickness = length(origin - firstPoint);
         throughput *= exp(-thickness * (1.0 - surfaceColor) * absorption);
     }

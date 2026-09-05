@@ -45,18 +45,18 @@
 
 SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader) {
 
-    WorldObject sponza;
-    sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
-    sponza.setScale(glm::vec3(4.0f));
-    sponza.setPosition(glm::vec3(10, -3, 0));
-    entities.emplace_back(std::move(sponza));
+    // WorldObject sponza;
+    // sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
+    // sponza.setScale(glm::vec3(4.0f));
+    // sponza.setPosition(glm::vec3(10, -3, 0));
+    // entities.emplace_back(std::move(sponza));
     //
     //
-    // WorldObject cornellBox;
-    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 3.5f, emissiveVertices, lightData));
-    // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-    // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
-    // entities.emplace_back(std::move(cornellBox));
+    WorldObject cornellBox;
+    cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 3.5f, emissiveVertices, lightData));
+    cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
+    entities.emplace_back(std::move(cornellBox));
     //
     // WorldObject cornellBoxSpheres;
     // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.25f, emissiveVertices, lightData));
@@ -64,9 +64,9 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // cornellBoxSpheres.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBoxSpheres));
-
+     //
      // WorldObject cornellBoxWater;
-     // cornellBoxWater.entities = std::move(gltfLoader.load("CornellBoxWater", loader, device, physicalDevice, mvp, 1.0f, 0.32f, emissiveVertices, lightData));
+     // cornellBoxWater.entities = std::move(gltfLoader.load("CornellBoxWater", loader, device, physicalDevice, mvp, 1.0f, 0.6f, emissiveVertices, lightData));
      // cornellBoxWater.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
      // cornellBoxWater.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
      // cornellBoxWater.setPosition(glm::vec3(0.0, -1, 0.0));
@@ -98,9 +98,9 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // veachBidir.setRotation(-90, glm::vec3(0.0f, 1.0f, 0.0f));
     // entities.emplace_back(std::move(veachBidir));
 
-    //
-    // directionalLight.color = LIGHT_DISABLED;
-    directionalLight.color = glm::vec4(1.0, 1.0, 1.0, 1.0);
+
+    directionalLight.color = LIGHT_DISABLED;
+    // directionalLight.color = glm::vec4(1.0, 1.0, 1.0, 1.0);
 
     for (Entity* entity : getEntities()) {
         entity -> setIndexAddress(entity -> getModel().indexBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}) : 0);
