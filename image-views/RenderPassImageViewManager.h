@@ -30,6 +30,8 @@ class RenderPassImageViewManager {
 
     void registerImage(std::string id, VkFormat format, int width, int height);
 
+    void registerImage(std::string id, VkFormat format, int width, int height, int numAllocated);
+
     void resizeImage(std::string id, int width, int height);
 
     TextureView* getTextureView(std::string id, int frameIndex);

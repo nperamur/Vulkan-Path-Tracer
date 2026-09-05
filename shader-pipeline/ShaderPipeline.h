@@ -38,7 +38,7 @@ struct Image {
     std::string identifier{};
     VkFormat format{};
     int frameIndex{};
-
+    int numAllocated = 0;
     VkImage& getImage() { return image; }
     vk::raii::ImageView& getImageView() { return imageView; }
 };

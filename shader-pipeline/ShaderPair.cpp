@@ -22,13 +22,21 @@ void ShaderPair::setUpPipeline() {
     uint32_t count =
         ((desc.staticData.numUBOs || desc.staticData.numTextureSamplers) ? 1 : 0) +
         ((desc.dynamicData.numUBOs || desc.dynamicData.numTextureSamplers) ? 1 : 0);
-
+    std::vector<vk::PushConstantRange> pushRanges;
     vk::PushConstantRange pushRange(
         vk::ShaderStageFlagBits::eVertex,
         0,
         192
     );
-    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 1, &pushRange);
+    vk::PushConstantRange pushRange2(
+        vk::ShaderStageFlagBits::eFragment,
+        0,
+        192
+    );
+
+    pushRanges.push_back(pushRange);
+    pushRanges.push_back(pushRange2);
+    vk::PipelineLayoutCreateInfo layoutInfo({}, count, layouts.data(), 2, pushRanges.data());
     rasterPipelineLayout.emplace(*device, layoutInfo);
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo(

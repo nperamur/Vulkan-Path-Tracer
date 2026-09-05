@@ -52,9 +52,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
                                             std::vector<vk::Format>{swapChainImageFormat, vk::Format::eR32G32B32A32Sfloat}, *allocator, forwardPassDescriptorsInfo, 2));
 
 
-    for (int i = 0; i < Config::maxFramesInFlight; i++) {
-        this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::forwardPass) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light), i);
-    }
+    //for (int i = 0; i < Config::maxFramesInFlight; i++) {
+     //   this -> shaderPipelineRegistry -> getShaderPipeline(Shaders::forwardPass) -> setUniform({ForwardPassShaderSlots::lightUBO}, &light, sizeof(light), i);
+   // }
     //raytracing
     size_t numBaseColorTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::baseColor).size();
     size_t numNormalMapTextureViews = textureBufferManager -> getTextureViews(TextureBuffers::normalMap).size();
@@ -128,7 +128,7 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     int width, height;
     glfwGetFramebufferSize(Application::get() -> getWindow(), &width, &height);
     imageViewManager -> registerImage(RenderPassImages::baseForwardPass, VK_FORMAT_B8G8R8A8_SRGB, width, height);
-    imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
+    imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height, 1);
     imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     // imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
@@ -155,11 +155,14 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
 
     Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
-    Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, frameIndex));
+    Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, 0));
     Image* blendOutputImage = &(this -> imageViewManager -> getImage(RenderPassImages::blendOutput, frameIndex));
     Image* visibilityBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::visibilityBuffer, frameIndex);
     // Image* normalBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::normalBuffer, frameIndex);
-
+    // std::vector<std::reference_wrapper<Image>> historyImages;
+    // for (int i = 0; i < Config::maxFramesInFlight; i++) {
+    //     historyImages.push_back((this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, frameIndex)));
+    // }
 
     mvp.projection = createProjectionMatrix();
     vk::Rect2D rect2D({0, 0}, *swapChainExtent);
@@ -191,15 +194,15 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     inverseViewProj.inverseView = glm::inverse(dView);
 
 
-    forwardPassShader -> setUniform(ForwardPassShaderSlots::forwardPassUBO, &data, sizeof(data), frameIndex);
+    //forwardPassShader -> setUniform(ForwardPassShaderSlots::forwardPassUBO, &data, sizeof(data), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     rtShaderPipeline -> setUniform(RTShaderSlots::inverseViewProj, &inverseViewProj, sizeof(inverseViewProj), frameIndex);
-    combineShaders -> setUniform(CombineShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
+    //combineShaders -> setUniform(CombineShaderSlots::lightUBO, &light, sizeof(light), frameIndex);
     //
     barrierManager -> begin();
-    barrierManager -> transition(combineShaders -> getUniformBuffer({.set = 1, .binding = 0}, frameIndex),
-     sizeof(light),  ResourceStage::hostStage | ResourceAccess::write | ResourceType::ubo,
-     ResourceAccess::read | ResourceType::ubo | ResourceStage::fragmentShader);
+    // barrierManager -> transition(combineShaders -> getUniformBuffer({.set = 1, .binding = 0}, frameIndex),
+    //  sizeof(light),  ResourceStage::hostStage | ResourceAccess::write | ResourceType::ubo,
+    //  ResourceAccess::read | ResourceType::ubo | ResourceStage::fragmentShader);
     barrierManager -> transition(rtShaderPipeline -> getUniformBuffer({.set = 1, .binding = 0}, frameIndex),
      sizeof(light),  ResourceStage::hostStage | ResourceAccess::write | ResourceType::ubo,
      ResourceAccess::read | ResourceType::ubo | ResourceStage::raytracing);
@@ -208,11 +211,13 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     uint32_t index = 0;
 
     commandBuffer.pushConstants2({rtShaderPipeline -> getPipelineLayout(), vk::ShaderStageFlagBits::eRaygenKHR, 0, sizeof(uint32_t), &light.frameCount});
+    commandBuffer.pushConstants2({combineShaders -> getPipelineLayout(), vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), &light.frameCount});
+
     renderGraph.initCallbacks([&](Model& model)
         { renderModel(commandBuffer, model, index, viewport, rect2D); index++; }, [&]() {
             traceRays(commandBuffer, viewport, rect2D, width, height, 1);
         }, [this, &commandBuffer, &forwardPassShader, &rtShaderPipeline, frameIndex]() {
-            commandBuffer.pushConstants2({ forwardPassShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp });
+            commandBuffer.pushConstants2({ forwardPassShader -> getPipelineLayout(), vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex, 0, sizeof(MVP), &mvp });
         }
     );
 
@@ -364,7 +369,7 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMapp
 
         combineShaders -> setTextureSampler(CombineShaderSlots::secondImage, (rtTextureViews[frameIndex]), vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
-        TextureView* historyBufferTextureView = this->imageViewManager->getTextureView(RenderPassImages::historyBuffer, frameIndex);
+        TextureView* historyBufferTextureView = this->imageViewManager->getTextureView(RenderPassImages::historyBuffer, 0);
         combineShaders -> setTextureSampler(CombineShaderSlots::historyBuffer, *historyBufferTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
 
 

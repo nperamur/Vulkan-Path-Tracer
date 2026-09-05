@@ -35,10 +35,15 @@ Image& RenderPassImageViewManager::getImage(const std::string& id, int frameInde
  * Allocates as many images as needed based on the number of in-flight frames
  */
 void RenderPassImageViewManager::registerImage(std::string id, VkFormat format, int width, int height) {
-    for (int i = 0; i < Config::maxFramesInFlight; i++) {
-        Image image = {.imageView = nullptr, .sampler = nullptr};
+    registerImage(id, format, width, height, 3);
+}
+
+void RenderPassImageViewManager::registerImage(std::string id, VkFormat format, int width, int height, int numAllocated) {
+    for (int i = 0; i < numAllocated; i++) {
+        Image image = {.imageView = nullptr, .sampler = nullptr, .numAllocated = 0};
         image.identifier = id;
         image.frameIndex = i;
+        image.numAllocated = numAllocated;
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -89,17 +94,20 @@ void RenderPassImageViewManager::registerImage(std::string id, VkFormat format, 
  */
 void RenderPassImageViewManager::resizeImage(std::string id, int width, int height) {
     VkFormat format = {};
-    for (int i = 0; i < images.size(); i += Config::maxFramesInFlight) {
+    int i = 0;
+    while (i < images.size()) {
         if (images[i].identifier == id) {
             device->waitIdle();
             format = images[i].format;
-            for (int j = 0; j < Config::maxFramesInFlight; j++) {
+            for (int j = 0; j < images[i].numAllocated; j++) {
                 vmaDestroyImage(*allocator, images[i + j].image, images[i + j].allocation);
             }
-            images.erase(images.begin() + i, images.begin() + i + Config::maxFramesInFlight);
+            images.erase(images.begin() + i, images.begin() + i + images[i].numAllocated);
             break;
         }
+        i += images[i].numAllocated;
     }
+
 
     registerImage(id, format, width, height);
 }

@@ -147,6 +147,7 @@ const float SUN_RADIANCE = 3.33e5;
 
 //float u, float[] cdfBuffer int start, int end, int index, float pdf
 #define SAMPLE_CDF(u, cdfBuffer, start, end, index, pdf) { \
+   int initialStart = start;\
    while (start < end) { \
        int mid = (start + end) / 2; \
        if (u > cdfBuffer[mid]) { \
@@ -156,7 +157,7 @@ const float SUN_RADIANCE = 3.33e5;
        } \
    } \
    index = start; \
-   pdf = cdfBuffer[index] - (index > start ? cdfBuffer[index - 1] : 0.0); \
+   pdf = cdfBuffer[index] - (index > initialStart ? cdfBuffer[index - 1] : cdfBuffer[initialStart]); \
 }
 
 //returns the solid angle.
@@ -196,8 +197,9 @@ float getSolidAnglePDF(Light light, vec3 lightDirection, vec3 lightPosition, vec
     return pdfArea * pow(length(lightPosition - surfacePos), 2) / cosTheta;
 }
 
-vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirectionPDF, inout vec3 emissionColor, inout float tMax, inout int materialIndex)  {
+vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirectionPDF, inout vec3 emissionColor, inout float tMax, inout int materialIndex, vec3 normal, inout bool needsLightSampling)  {
     float lightCDFRand = randFloat(randState);
+    needsLightSampling = true;
     bool includesDirectionalLight = length(lightData.color) > 0;
     int start = 0;
     //int end = lightCDF.data.length();
@@ -243,7 +245,12 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
         emissionColor = SUN_RADIANCE * lightData.color.rgb;
         materialIndex = -1;
         lightDirectionPDF = (1 / calculateSolidAngleFromAngularRadius(directionalLightAngularRadius)) * lightSelectionPDF;
-        return sampleDirectionalLight(normalize(lightData.position).xyz, cos(directionalLightAngularRadius), randState);
+        vec3 lightDir = sampleDirectionalLight(normalize(lightData.position).xyz, cos(directionalLightAngularRadius), randState);
+        if (dot(normal, lightDir) < 1e-4) {
+            needsLightSampling = false;
+            return vec3(0.0f);
+        }
+        return lightDir;
     }
     Light light = lightDataBuffer.data[lightIndex];
 
@@ -272,6 +279,10 @@ vec3 sampleLight(inout uint randState, vec3 surfacePos, inout float lightDirecti
     vec3 lightPosition = (v0 + (u * edge1) + (v * edge2));
 
     vec3 lightDirection = normalize(lightPosition - surfacePos);
+    if (dot(normal, lightDirection) < 1e-4) {
+        needsLightSampling = false;
+        return vec3(0.0f);
+    }
     tMax = length(lightPosition - surfacePos);
     vec3 lightNormal = normalize(cross(edge1, edge2));
     float solidAnglePDF = getSolidAnglePDF(light, lightDirection, lightPosition, surfacePos, lightNormal);
@@ -868,8 +879,6 @@ void processBounce(
         diffuseBounce = !transmissionBounce;
     }
 
-    vec3 directBRDF = vec3(0.0);
-    vec3 directLight = vec3(0.0);
     bool entering = false;
 
     if (findId(materialIndex) < 0) {
@@ -919,48 +928,51 @@ void processBounce(
             rayDir = refracted * inversesqrt(lenSq);
         }
     }
-
-    vec3 directHalfVector = normalize(-prevRayDir + normalize(lightDir));
-    vec3 directTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * lightDir));
     vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
-    vec3 directFresnel = (fresnelSchlick(directHalfVector, -prevRayDir, f0));
 
-
-    float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, -prevRayDir, metalness), 1.0, metalness);
-    float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
-    vec3 nee_refracted = refract(prevRayDir, directTransmissionHalfVector, eta);
-    bool neeTIR = material.transmissionFactor > 0 && (dot(nee_refracted, nee_refracted) < 1e-6);
-
-    directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeTIR, roughness, metalness) * max(0, dot(normal, normalize(lightDir)))
-               + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directFresnel) * (1.0 - metalness) * (neeTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
-               + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * (neeTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
-
-    float misWeight = 1.0f;
     if (mis) {
+        vec3 directHalfVector = normalize(-prevRayDir + normalize(lightDir));
+        vec3 directTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * lightDir));
+        vec3 directFresnel = (fresnelSchlick(directHalfVector, -prevRayDir, f0));
+
+
+        float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, -prevRayDir, metalness), 1.0, metalness);
+        float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
+        vec3 nee_refracted = refract(prevRayDir, directTransmissionHalfVector, eta);
+        bool neeTIR = material.transmissionFactor > 0 && (dot(nee_refracted, nee_refracted) < 1e-6);
+
+        vec3 directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeTIR, roughness, metalness) * max(0, dot(normal, normalize(lightDir)))
+                   + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directFresnel) * (1.0 - metalness) * (neeTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
+                   + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * (neeTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
+
         float pdfBSDFDiffuseToLight  = max(dot(normal, lightDir), 0.0) / PI;
         float pdfBSDFReflectionToLight = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, lightDir, directHalfVector);
         float pdfBSDFTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, lightDir, directTransmissionHalfVector, n_t, n_i);
         if (neeTIR) directFresnelValue = 1.0f;
         bsdfPDF = ((1.0 - directFresnelValue) * pdfBSDFDiffuseToLight) * (1.0f - material.transmissionFactor) + (directFresnelValue * pdfBSDFReflectionToLight) + (1.0 - directTransmissionFresnelValue) * pdfBSDFTransmission * material.transmissionFactor;
-        misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
+        float misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
+        vec3 directLight = vec3(0.0f);
+        if (shadowMiss) {
+            directLight = directBRDF * lightIntensity * emissionColor * misWeight / lightDirectionPDF;
+        }
+        accumulatedLight += directLight * throughput;
     }
+
     float pdfDiffuse  = max(dot(normal, rayDir), 0.0) / PI;
-    float pdfReflection = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal);
-    float pdfTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal, n_t, n_i);
+    //vec3 indirectHalfVector = normalize(-prevRayDir + normalize(rayDir));
+    //vec3 indirectTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * rayDir));
+    //float bsdfFresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir, metalness), 1.0, metalness);
+    float bsdfTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, microfacetNormal, -prevRayDir, metalness), 1.0, metalness);
 
-    vec3 indirectHalfVector = normalize(-prevRayDir + normalize(rayDir));
-    vec3 indirectTransmissionHalfVector = normalize(-(n_i * (-prevRayDir) + n_t * rayDir));
+    float lobePdfReflection = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal);
+    float lobePdfTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, rayDir, microfacetNormal, n_t, n_i);
 
-    float bsdfFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectHalfVector, -prevRayDir, metalness), 1.0, metalness);
-    float bsdfTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, indirectTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
+    //float bsdfPdfReflection = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, rayDir, indirectHalfVector);
+    //float bsdfPdfTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, rayDir, indirectTransmissionHalfVector, n_t, n_i);
 
-    float fullPdf = ((1.0 - bsdfFresnelValue) * pdfDiffuse) * (1.0f - material.transmissionFactor) + (bsdfFresnelValue * pdfReflection) + (1.0 - bsdfTransmissionFresnelValue) * pdfTransmission * material.transmissionFactor;
+    float fullPdf = ((1.0 - fresnelValue) * pdfDiffuse) * (1.0f - material.transmissionFactor) + (fresnelValue * lobePdfReflection) + (1.0 - bsdfTransmissionFresnelValue) * lobePdfTransmission * material.transmissionFactor;
     bsdfPDF = fullPdf;
 
-    if (shadowMiss) {
-        directLight = directBRDF * lightIntensity * emissionColor * misWeight / lightDirectionPDF;
-    }
-    accumulatedLight += directLight * throughput;
     //TODO: Test and read stained glass from gltf file rather than relying soley on hardcoded values
     if (material.transmissionFactor > 0.0 && !entering && transmissionBounce) {
         float absorption = 0.8f;
@@ -995,7 +1007,7 @@ void processBounce(
                      * (TIR ? 0.0 : 1.0)
                      / (1.0 - fresnelValue);
     } else if (reflectionBounce) {
-        lobePDF = fresnelValue * pdfReflection;
+        lobePDF = fresnelValue * lobePdfReflection;
         //throughput *= (getSpecularBRDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, rayDir, TIR, roughness, metalness)
         //              * max(dot(normal, rayDir), 0.0))
         //              / lobePdf;
@@ -1003,7 +1015,7 @@ void processBounce(
                  * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, -prevRayDir, f0))
                  / fresnelValue;
     } else if (transmissionBounce) {
-        lobePDF = (1.0 - fresnelValue) * material.transmissionFactor * pdfTransmission;
+        lobePDF = (1.0 - fresnelValue) * material.transmissionFactor * lobePdfTransmission;
         //throughput *= getBTDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, normalize(rayDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * abs(dot(normal, rayDir))
          //                    * (TIR ? 0.0 : 1.0) / lobePdf;
         throughput *= sampleGGXGeometry(roughness, normal, rayDir)
@@ -1143,21 +1155,6 @@ void main() {
         float bsdfPDF = 0.0f;
         float lobePDF = 0.0f;
         vec3 pos = origin.xyz;
-        vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
-        if (lightDirectionPDF <= 0) continue;
-        traceRayEXT(
-            topLevelAS,
-            gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-            0xFF,
-            0,
-            0,
-            0,
-            origin.xyz,
-            tMin,
-            lightDir,
-            lightDist > 0 ? lightDist : tMax,
-            0
-        );
 
         vec3 prevRayDir = rayDir;
 
@@ -1237,9 +1234,28 @@ void main() {
          lightSum += vec3(length(g1) / max(length(g2), 1e-5),0.0f, 0.0f);
          continue;
          **/
+         bool needsLightSampling = true;
+         vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex, normal, needsLightSampling);
+         bool mis = needsLightSampling && roughness != 0 && lightDirectionPDF > 0;
+
+         if (mis) {
+             traceRayEXT(
+                 topLevelAS,
+                 gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+                 0xFF,
+                 0,
+                 0,
+                 0,
+                 origin.xyz,
+                 tMin,
+                 lightDir,
+                 lightDist > 0 ? lightDist : tMax,
+                 0
+             );
+         }
         processBounce(normal, pos, material, materialIndex, getSurfaceColor(material, texCoords, primitiveIndex, g1, g2), prevRayDir, randState,
                         rayPayload.distance < 0 || rayPayload.materialIndex == lightMaterialIndex,
-                        throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, roughness != 0, false, bsdfPDF, lobePDF, roughness, metalness, prevBounceDiffuse);
+                        throughput, accumulatedLight, rayDir, lightDir, emissionColor, lightDirectionPDF, mis, false, bsdfPDF, lobePDF, roughness, metalness, prevBounceDiffuse);
         //if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) throughput = vec3(0.0f);
 
 
@@ -1268,7 +1284,6 @@ void main() {
             prevRayDir = rayDir;
             material = materials.materialData[rayPayload.materialIndex];
             primitiveIndex = rayPayload.primitiveIndex;
-            bool mis = roughness != 0;
             vertices = VertexBuffer(material.vertexAddress);
             indices = IndexBuffer(material.indexAddress);
             i0 = indices.data[rayPayload.primitiveIndex * 3 + 0];
@@ -1375,12 +1390,11 @@ void main() {
                  }
                  break;
             }
-            mis = roughness != 0;
             int lightMaterialIndex;
             lightDist = -1.0f;
-            vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex);
-
-            if (lightDirectionPDF <= 0) break;
+            bool needsLightSampling = true;
+            vec3 lightDir = sampleLight(randState, origin.xyz, lightDirectionPDF, emissionColor, lightDist, lightMaterialIndex, normal, needsLightSampling);
+            mis = roughness != 0 && interiorListSize == 0 && needsLightSampling && lightDirectionPDF > 0;
 
            vec3 pos = origin.xyz;
            if (mis) {

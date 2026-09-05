@@ -513,7 +513,7 @@ void Application::setupSwapChain() {
     vk::SwapchainCreateInfoKHR swapChainCreateInfo(
         {},
         *surface,
-        3,
+        Config::maxFramesInFlight,
         swapChainImageFormat.value(),
         colorSpace.value(),
         capabilities.currentExtent,

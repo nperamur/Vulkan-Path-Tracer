@@ -53,7 +53,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     //
     //
     // WorldObject cornellBox;
-    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 2.5f, emissiveVertices, lightData));
+    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 3.5f, emissiveVertices, lightData));
     // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBox));
@@ -65,22 +65,22 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));
     // entities.emplace_back(std::move(cornellBoxSpheres));
 
-    //  WorldObject cornellBoxWater;
-    //  cornellBoxWater.entities = std::move(gltfLoader.load("CornellBoxWater", loader, device, physicalDevice, mvp, 1.0f, 0.32f, emissiveVertices, lightData));
-    // cornellBoxWater.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-    //  cornellBoxWater.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
-    //  cornellBoxWater.setPosition(glm::vec3(0.0, -1, 0.0));
-    //  entities.emplace_back(std::move(cornellBoxWater));
+     // WorldObject cornellBoxWater;
+     // cornellBoxWater.entities = std::move(gltfLoader.load("CornellBoxWater", loader, device, physicalDevice, mvp, 1.0f, 0.32f, emissiveVertices, lightData));
+     // cornellBoxWater.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+     // cornellBoxWater.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
+     // cornellBoxWater.setPosition(glm::vec3(0.0, -1, 0.0));
+     // entities.emplace_back(std::move(cornellBoxWater));
 
     //
     // WorldObject blocks;
-    // blocks.entities = std::move(gltfLoader.load("Blocks-2", loader, device, physicalDevice, mvp, 0.2f, 1.0, emissiveVertices, lightData));
+    // blocks.entities = std::move(gltfLoader.load("Blocks-2", loader, device, physicalDevice, mvp, 0.8f, 1.0, emissiveVertices, lightData));
     // blocks.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // blocks.setPosition(glm::vec3(-250.0f, -90.0f, 150.0f));
     // entities.emplace_back(std::move(blocks));
     //
     // WorldObject cornellBoxMirror;
-    // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, 0.06f, emissiveVertices, lightData));
+    // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, 0.5f, emissiveVertices, lightData));
     // cornellBoxMirror.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBoxMirror.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxMirror.setPosition(glm::vec3(0.0, -1, 0.0));

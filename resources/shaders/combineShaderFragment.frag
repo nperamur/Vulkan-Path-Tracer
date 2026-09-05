@@ -1,10 +1,7 @@
 #version 450
-layout(set = 1, binding = 0) uniform LightUBO {
-    vec4 position;
-    vec4 color;
-    vec4 playerPos;
-    int frameCount;
-} lightData;
+layout(push_constant) uniform PushConstants {
+    uint frameCount;
+} pushConstants;
 layout(set = 0, binding = 0) uniform sampler2D firstColor;
 layout(set = 0, binding = 1) uniform sampler2D secondColor;
 layout(set = 0, binding = 2) uniform sampler2D historyBuffer;
@@ -21,9 +18,9 @@ void main() {
     //outColor = history + (first * lightFactor - history) * 0.1;
     //outColor = first * lightFactor;
     //outColor = history + (second - history) * 0.1;
-    if (lightData.frameCount < 3) {
+    if (pushConstants.frameCount < 3) {
         outColor = second;
     } else {
-        outColor = history + (second - history) / float(lightData.frameCount);
+        outColor = history + (second - history) / float(pushConstants.frameCount - 2);
     }
 }
