@@ -4,7 +4,8 @@ Diffuse lighting uses cosine weighted importance sampling and specular uses GGX 
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
 
-<img alt="Screenshot 2026-09-02 212653" src="https://github.com/user-attachments/assets/e3b02af2-92c5-4a4b-9e93-07cfc35ddd21" />
+<img src="https://github.com/user-attachments/assets/bfabc9c5-d244-452c-ab12-973ba534b7e7" />
+
 
 | | Low Roughness | High Roughness |
 |---|---|---|
@@ -31,9 +32,9 @@ Renders demonstrating these additions are shown below.
     <td align="center"><b>Cornell Box Spheres (Transmission on red-tinted glass sphere)</b></td>
   </tr>
   <tr>
-    <td><img width="400" alt="Screenshot 2026-09-02 000102" src="https://github.com/user-attachments/assets/37957de1-5683-4b93-81cf-639904c3e2c8" /></td>
-    <td><img height="400" alt="Screenshot 2026-09-02 212653" src="https://github.com/user-attachments/assets/e3b02af2-92c5-4a4b-9e93-07cfc35ddd21" /></td>
-    <td><img width="400" alt="Screenshot 2026-08-17 185006" src="https://github.com/user-attachments/assets/81ecfd03-baa8-468d-8aaf-7bcbfabfcb5d" /></td>
+    <td><img width="400" alt="Screenshot 2026-09-04 183147" src="https://github.com/user-attachments/assets/de3ec325-89b9-4d12-b2fb-739c844e08f3" /></td>
+    <td><img height="400" src="https://github.com/user-attachments/assets/bfabc9c5-d244-452c-ab12-973ba534b7e7" /></td>
+    <td><img width="400" src="https://github.com/user-attachments/assets/f3b807e6-e09b-4aed-82d2-7d5c913b50b0" /></td>
 
   </tr>
 </table>
