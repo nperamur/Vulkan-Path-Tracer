@@ -119,7 +119,7 @@ void GLTFLoader::processNodes(
                     auto& texture = gltf.textures[gltf.materials[materialIndex].normalTexture -> textureIndex];
                     if (texture.imageIndex.has_value()) {
                         auto& image = gltf.images[texture.imageIndex.value()];
-                        uploadTexture(image, TextureBuffers::normalMap,gltf, name, device, &material.normalMapTextureIndex, VK_FORMAT_R8G8B8A8_SRGB);
+                        uploadTexture(image, TextureBuffers::normalMap,gltf, name, device, &material.normalMapTextureIndex, VK_FORMAT_R8G8B8A8_UNORM);
                     }
                 }
 
@@ -127,7 +127,7 @@ void GLTFLoader::processNodes(
                     auto& texture = gltf.textures[gltf.materials[materialIndex].pbrData.metallicRoughnessTexture -> textureIndex];
                     if (texture.imageIndex.has_value()) {
                         auto& image = gltf.images[texture.imageIndex.value()];
-                        uploadTexture(image, TextureBuffers::metallicRoughnessMap,gltf, name, device, &material.metallicRoughnessMapTextureIndex, VK_FORMAT_R8G8B8A8_SRGB);
+                        uploadTexture(image, TextureBuffers::metallicRoughnessMap,gltf, name, device, &material.metallicRoughnessMapTextureIndex, VK_FORMAT_R8G8B8A8_UNORM);
                     }
                 }
                 imageCounter++;
@@ -405,12 +405,13 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
 
     commandBuffers[0].pipelineBarrier2(mipSrcDepInfo);
     uint32_t numMips = static_cast<uint32_t>(std::floor(std::log2(static_cast<float>(std::max(width, height))))) + 1;
-    std::vector<vk::ImageBlit2> mipBlitInfo;
 
+    int prevWidth = width;
+    int prevHeight = height;
     for (uint32_t i = 1; i < numMips; i++) {
         vk::ImageSubresourceLayers baseSubResource{
             vk::ImageAspectFlagBits::eColor,
-            0,
+            i - 1,
             0,
             1
         };
@@ -424,7 +425,7 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
 
         std::array<vk::Offset3D, 2> srcOffsets{
             vk::Offset3D{0, 0, 0},
-            vk::Offset3D{width, height, 1}
+            vk::Offset3D{prevWidth, prevHeight, 1}
         };
         int mipWidth = width / pow(2, i);
         int mipHeight = height / pow(2, i);
@@ -433,6 +434,8 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
             vk::Offset3D{mipWidth, mipHeight, 1}
         };
 
+        prevWidth = mipWidth;
+        prevHeight = mipHeight;
         vk::ImageBlit2 imageBlit{
             baseSubResource,
             srcOffsets,
@@ -464,15 +467,37 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
         );
 
         commandBuffers[0].pipelineBarrier2(mipDstDepInfo);
-        mipBlitInfo.push_back(imageBlit);
 
+        commandBuffers[0].blitImage2({textureImage->getImage(),
+            vk::ImageLayout::eTransferSrcOptimal,
+            textureImage->getImage(), vk::ImageLayout::eTransferDstOptimal, 1, &imageBlit, vk::Filter::eLinear});
+
+        if (i + 1 < numMips) {
+            vk::ImageSubresourceRange srcRange(
+                vk::ImageAspectFlagBits::eColor,
+                i, 1, 0, 1
+            );
+            vk::ImageMemoryBarrier2 nextMipSrcBarrier(
+                vk::PipelineStageFlagBits2::eTransfer,
+                vk::AccessFlagBits2::eTransferWrite,
+                vk::PipelineStageFlagBits2::eTransfer,
+                vk::AccessFlagBits2::eTransferRead,
+                vk::ImageLayout::eTransferDstOptimal,
+                vk::ImageLayout::eTransferSrcOptimal,
+                0,
+                0,
+                textureImage->getImage(),
+                srcRange
+            );
+            vk::DependencyInfo nextMipSrcDepInfo(
+                {},
+                {},
+                {},
+                nextMipSrcBarrier
+            );
+            commandBuffers[0].pipelineBarrier2(nextMipSrcDepInfo);
+        }
     }
-
-
-    commandBuffers[0].blitImage2({textureImage -> getImage(),
-        vk::ImageLayout::eTransferSrcOptimal,
-        textureImage -> getImage(), vk::ImageLayout::eTransferDstOptimal, numMips - 1, mipBlitInfo.data(), vk::Filter::eLinear});
-
     for (uint32_t i = 1; i < numMips; i++) {
         vk::ImageSubresourceRange mipSubresourceRange(
             vk::ImageAspectFlagBits::eColor,
@@ -482,7 +507,7 @@ void GLTFLoader::uploadTexture(fastgltf::Image image, std::string textureBuffer,
         vk::PipelineStageFlagBits2::eTransfer,
         vk::AccessFlagBits2::eTransferWrite,
         vk::PipelineStageFlagBits2::eRayTracingShaderKHR,vk::AccessFlagBits2::eShaderSampledRead,
-        vk::ImageLayout::eTransferDstOptimal,
+        i != numMips - 1 ? vk::ImageLayout::eTransferSrcOptimal : vk::ImageLayout::eTransferDstOptimal,
         vk::ImageLayout::eShaderReadOnlyOptimal,
         0,
         0,

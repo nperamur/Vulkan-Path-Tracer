@@ -96,6 +96,7 @@ file(GLOB GLSL_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.rgen
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.rmiss
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.rchit
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.rahit
 )
 
 foreach(GLSL_FILE ${GLSL_FILES})

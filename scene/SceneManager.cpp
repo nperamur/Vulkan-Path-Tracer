@@ -45,21 +45,28 @@
 
 SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader) {
 
-    // WorldObject sponza;
-    // sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
-    // sponza.setScale(glm::vec3(4.0f));
-    // sponza.setPosition(glm::vec3(10, -3, 0));
-    // entities.emplace_back(std::move(sponza));
+    WorldObject sponza;
+    sponza.entities = std::move(gltfLoader.load("Sponza", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
+    sponza.setScale(glm::vec3(4.0f));
+    sponza.setPosition(glm::vec3(10, -3, 0));
+    entities.emplace_back(std::move(sponza));
+
+    // WorldObject water;
+    // water.entities = std::move(gltfLoader.load("water", loader, device, physicalDevice, mvp, 1.0f, 1.0, emissiveVertices, lightData));
+    // water.setPosition(glm::vec3(30, 0, 80));
+    // water.setScale(glm::vec3(0.5f));
+    // entities.emplace_back(std::move(water));
+
     //
     //
-    WorldObject cornellBox;
-    cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 3.5f, emissiveVertices, lightData));
-    cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-    cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
-    entities.emplace_back(std::move(cornellBox));
+    // WorldObject cornellBox;
+    // cornellBox.entities = std::move(gltfLoader.load("Cornell-Box", loader, device, physicalDevice, mvp, 1.0f, 3.5f, emissiveVertices, lightData));
+    // cornellBox.setRotation(-90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    // cornellBox.setPosition(glm::vec3(0.0, -1, 0.0));
+    // entities.emplace_back(std::move(cornellBox));
     //
     // WorldObject cornellBoxSpheres;
-    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.25f, emissiveVertices, lightData));
+    // cornellBoxSpheres.entities = std::move(gltfLoader.load("Cornell-Box-Spheres", loader, device, physicalDevice, mvp, 1.0f, 0.5f, emissiveVertices, lightData));
     // cornellBoxSpheres.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // cornellBoxSpheres.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
     // cornellBoxSpheres.setPosition(glm::vec3(0.0, -1, 0.0));
@@ -71,14 +78,21 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
      // cornellBoxWater.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
      // cornellBoxWater.setPosition(glm::vec3(0.0, -1, 0.0));
      // entities.emplace_back(std::move(cornellBoxWater));
-
     //
+    // WorldObject cornellBoxCaustics;
+    // cornellBoxCaustics.entities = std::move(gltfLoader.load("CornellBoxCaustic", loader, device, physicalDevice, mvp, 1.0f, 0.6f, emissiveVertices, lightData));
+    // cornellBoxCaustics.setRotation(0.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+    // cornellBoxCaustics.setScale(glm::vec3(1.2f, 1.2f, 1.2f));
+    // cornellBoxCaustics.setPosition(glm::vec3(0.0, -1, 0.0));
+    // entities.emplace_back(std::move(cornellBoxCaustics));
+
+
     // WorldObject blocks;
-    // blocks.entities = std::move(gltfLoader.load("Blocks-2", loader, device, physicalDevice, mvp, 0.8f, 1.0, emissiveVertices, lightData));
+    // blocks.entities = std::move(gltfLoader.load("Blocks-2", loader, device, physicalDevice, mvp, 0.6f, 1.0, emissiveVertices, lightData));
     // blocks.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
     // blocks.setPosition(glm::vec3(-250.0f, -90.0f, 150.0f));
     // entities.emplace_back(std::move(blocks));
-    //
+
     // WorldObject cornellBoxMirror;
     // cornellBoxMirror.entities = std::move(gltfLoader.load("Cornell-Box-Mirror", loader, device, physicalDevice, mvp, 1.0f, 0.5f, emissiveVertices, lightData));
     // cornellBoxMirror.setRotation(90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -93,14 +107,14 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
     // entities.emplace_back(std::move(veachMisTestScene));
 
     // WorldObject veachBidir;
-    // veachBidir.entities = std::move(gltfLoader.load("veach-bidir", loader, device, physicalDevice, mvp, 1.0f, 0.02f, emissiveVertices, lightData));
+    // veachBidir.entities = std::move(gltfLoader.load("veach-bidir", loader, device, physicalDevice, mvp, 1.0f, 0.1f, emissiveVertices, lightData));
     // veachBidir.setScale(glm::vec3(0.05f));
     // veachBidir.setRotation(-90, glm::vec3(0.0f, 1.0f, 0.0f));
     // entities.emplace_back(std::move(veachBidir));
 
-
-    directionalLight.color = LIGHT_DISABLED;
-    // directionalLight.color = glm::vec4(1.0, 1.0, 1.0, 1.0);
+    //
+    // directionalLight.color = LIGHT_DISABLED;
+    directionalLight.color = glm::vec4(1.0, 0.93, 0.82, 1.0);
 
     for (Entity* entity : getEntities()) {
         entity -> setIndexAddress(entity -> getModel().indexBuffer ? device.getBufferAddress(vk::BufferDeviceAddressInfo{*entity -> getModel().indexBuffer}) : 0);
@@ -114,17 +128,18 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
 
 }
 
-// SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight) {
+// SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::PhysicalDevice& physicalDevice, MVP& mvp, DirectionalLight& directionalLight, GLTFLoader& gltfLoader) {
 //
 //      entities.reserve(32);
 //
 //      ModelLoader modelLoader;
 //
-//      Material white = { .color = glm::vec4(0.73f, 0.73f, 0.73f, 1.0f), .roughness = 0.8f, .metalness = 1.0f, .reflectivity = 0.04f };
-//      Material red   = { .color = glm::vec4(0.65f, 0.05f, 0.05f, 1.0f), .roughness = 0.8f, .metalness = 0.0f, .reflectivity = 0.04f };
-//      Material green = { .color = glm::vec4(0.12f, 0.45f, 0.12f, 1.0f), .roughness = 0.8f, .metalness = 0.0f, .reflectivity = 0.04f };
-//      Material light = { .color = glm::vec4(2.0f, 2.0f, 2.0f, 1.0f), .roughness = 0.5f, .metalness = 0.0f, .reflectivity = 0.04f };
-//      Material gray  = { .color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), .roughness = 0.5f, .metalness = 1.0f, .reflectivity = 0.7f };
+//      float albedoScale = 0.6f;
+//      Material white = { .color =  albedoScale * glm::vec4(0.73f, 0.73f, 0.73f, 1.0f) , .roughness = 0.8f, .metalness = 1.0f, .reflectivity = 0.04f };
+//      Material red   = { .color = albedoScale * glm::vec4(0.65f, 0.05f, 0.05f, 1.0f), .roughness = 0.8f, .metalness = 0.0f, .reflectivity = 0.04f };
+//      Material green = { .color = albedoScale * glm::vec4(0.12f, 0.45f, 0.12f, 1.0f), .roughness = 0.8f, .metalness = 0.0f, .reflectivity = 0.04f };
+//      Material light = { .color = albedoScale * glm::vec4(2.0f, 2.0f, 2.0f, 1.0f), .roughness = 0.5f, .metalness = 0.0f, .reflectivity = 0.04f };
+//      Material gray  = { .color = albedoScale * glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), .roughness = 0.5f, .metalness = 1.0f, .reflectivity = 0.7f };
 //
 //      std::vector<float> quadVertices = {
 //          -1.0f, -1.0f, 0.0f,
@@ -250,7 +265,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
 //      };
 //
 //      auto cube = loader.load(cubeVertices, cubeIndices, cubeNormals, std::nullopt, device, physicalDevice);
-//      Material matteBlue = { .color = glm::vec4(0.2f, 0.3f, 0.9f, 1.0f), .roughness = 0.85f, .metalness = 0.0f, .reflectivity = 0.1f };
+//      Material matteBlue = { .color = albedoScale * glm::vec4(0.2f, 0.3f, 0.9f, 1.0f), .roughness = 0.85f, .metalness = 0.0f, .reflectivity = 0.1f };
 //      entities.emplace_back(Entity("cube_test", std::move(cube), matteBlue, mvp.transformation));
 //      std::get<Entity>(entities.back()).setRotation(glm::vec3(0.0f, -15, 0.0f));
 //      std::get<Entity>(entities.back()).setScale(glm::vec3(0.3f));
@@ -301,7 +316,7 @@ SceneManager::SceneManager(Loader& loader, vk::raii::Device& device, vk::raii::P
 //          }
 //      }
 //
-//      Material shinySpecular = { .color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), .roughness = 0.2f, .metalness = 1.0f, .reflectivity = 0.8f };
+//      Material shinySpecular = { .color = albedoScale * glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), .roughness = 0.2f, .metalness = 1.0f, .reflectivity = 0.8f };
 //      auto sphereModel = loader.load(sphereVertices, sphereIndices, sphereNormals, std::nullopt, device, physicalDevice);
 //      entities.emplace_back(Entity("stress_sphere", std::move(sphereModel), shinySpecular, mvp.transformation));
 //      std::get<Entity>(entities.back()).setScale(glm::vec3(0.25f));

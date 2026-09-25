@@ -62,6 +62,7 @@ class Renderer {
 
     // VkBuffer instanceBuffer;
     // VmaAllocation instanceAllocation;
+    std::optional<AbstractRenderPassImage> historyRenderPassImage;
 
     const vk::Format* swapChainImageFormat;
     const vk::Extent2D* swapChainExtent;

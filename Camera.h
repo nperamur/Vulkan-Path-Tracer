@@ -8,12 +8,13 @@
 
 class Camera {
     glm::vec3 position = glm::vec3(0.0f, 0.2f, 3.0f);
-    glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
     glm::vec3 upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+    float yaw = -90;
+    float pitch = 0;
     float lastTime = 0.0f;
     float deltaTime = 0.0f;
-    float cameraRotationSpeed = 2.5f;
-    float movementSpeed = 2;
+    float cameraRotationSpeed = 50.0f;
+    float movementSpeed = 3;
 
     public:
     glm::mat4 createViewMatrix();

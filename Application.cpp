@@ -439,6 +439,8 @@ void Application::setupDevices() {
     indexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
     indexing.descriptorBindingPartiallyBound = VK_TRUE;
     indexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
+
+    
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,

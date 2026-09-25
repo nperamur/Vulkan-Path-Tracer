@@ -89,9 +89,12 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
         rtShader->setStorageBuffer(RTShaderSlots::materialsBuffer, materials.data(), materials.size() * sizeof(Material), i);
         if (numBaseColorTextureViews > 0) {
             rtShader->setTextureBuffer(RTShaderSlots::baseColorTextures, textureBufferManager -> getTextureViews(TextureBuffers::baseColor), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+        }
+        if (numNormalMapTextureViews > 0) {
             rtShader->setTextureBuffer(RTShaderSlots::normalMapTextures, textureBufferManager -> getTextureViews(TextureBuffers::normalMap), vk::ImageLayout::eShaderReadOnlyOptimal, i);
+        }
+        if (numMetallicRoughnessMapTextureViews > 0) {
             rtShader->setTextureBuffer(RTShaderSlots::metallicRoughnessTextures, textureBufferManager -> getTextureViews(TextureBuffers::metallicRoughnessMap), vk::ImageLayout::eShaderReadOnlyOptimal, i);
-
         }
         static const std::vector<float> dummyBuffer = {0.0f};
 
@@ -131,6 +134,9 @@ Renderer::Renderer(ShaderPipelineRegistry &shaderPipelineRegistry, vk::raii::Dev
     imageViewManager -> registerImage(RenderPassImages::historyBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height, 1);
     imageViewManager -> registerImage(RenderPassImages::blendOutput, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
     imageViewManager -> registerImage(RenderPassImages::visibilityBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
+    Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, 0));
+    historyRenderPassImage.emplace(renderGraph.colorAttachment(*historyImage));
+
     // imageViewManager -> registerImage(RenderPassImages::normalBuffer, VK_FORMAT_R32G32B32A32_SFLOAT, width, height);
 
 
@@ -155,7 +161,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
 
     Image* baseForwardPassImage = &(this -> imageViewManager -> getImage(RenderPassImages::baseForwardPass, frameIndex));
-    Image* historyImage = &(this -> imageViewManager -> getImage(RenderPassImages::historyBuffer, 0));
     Image* blendOutputImage = &(this -> imageViewManager -> getImage(RenderPassImages::blendOutput, frameIndex));
     Image* visibilityBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::visibilityBuffer, frameIndex);
     // Image* normalBuffer = &(this -> imageViewManager) -> getImage(RenderPassImages::normalBuffer, frameIndex);
@@ -229,7 +234,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     AbstractRenderPassImage rtOutputRenderPassImage = renderGraph.storageImage(
                     rtShaderPipeline -> getStorageImage(StorageImages::raytracingOutput, frameIndex));
     AbstractRenderPassImage swapChainRenderPassImage = renderGraph.colorAttachment(swapChainRef);
-    AbstractRenderPassImage historyRenderPassImage = renderGraph.colorAttachment(*historyImage);
     AbstractRenderPassImage blendOutputRenderPassImage = renderGraph.colorAttachment(*blendOutputImage);
     AbstractRenderPassImage visibilityRenderPassImage = renderGraph.colorAttachment(*visibilityBuffer);
     // AbstractRenderPassImage normalRenderPassImage = renderGraph.colorAttachment(*normalBuffer);
@@ -254,7 +258,7 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
 
     RenderPass combinePass = {
         .renderStage = RenderStage::postProcessing,
-        .reads = { rtOutputRenderPassImage, baseForwardRenderPassImage, historyRenderPassImage},
+        .reads = { rtOutputRenderPassImage, baseForwardRenderPassImage, *historyRenderPassImage},
         .writes = { blendOutputRenderPassImage},
         .bindPipeline = [&]() { combineShaders -> bind(commandBuffer, frameIndex); },
         .toPresent = false
@@ -262,17 +266,6 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     renderGraph.addPass(combinePass);
 
 
-    RenderPass copyToHistory = {
-        .renderStage = RenderStage::copy,
-        .reads = { blendOutputRenderPassImage},
-        .writes = { historyRenderPassImage},
-        .bindPipeline = [&](){},
-        .toPresent = false,
-        .width  = static_cast<uint32_t>(width),
-        .height = static_cast<uint32_t>(height),
-
-    };
-    renderGraph.addPass(copyToHistory);
 
     RenderPass toneMappingPass = {
         .renderStage = RenderStage::postProcessing,
@@ -283,6 +276,17 @@ void Renderer::render(vk::raii::CommandBuffer &commandBuffer, vk::raii::ImageVie
     };
     renderGraph.addPass(toneMappingPass);
 
+    RenderPass copyToHistory = {
+        .renderStage = RenderStage::copy,
+        .reads = { blendOutputRenderPassImage},
+        .writes = { *historyRenderPassImage},
+        .bindPipeline = [&](){},
+        .toPresent = false,
+        .width  = static_cast<uint32_t>(width),
+        .height = static_cast<uint32_t>(height),
+
+    };
+    renderGraph.addPass(copyToHistory);
 
     // RenderPass copyToSwapchain = {
     //     .renderStage = RenderStage::copy,
@@ -375,7 +379,9 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMapp
 
         TextureView* toneMappingTextureView = this->imageViewManager->getTextureView(RenderPassImages::blendOutput, frameIndex);
         toneMappingShader -> setTextureSampler(ToneMappingShaderSlots::baseImage, *toneMappingTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
-
+        std::visit([](auto& image) {
+            image.prevStage = 0;
+        }, *historyRenderPassImage);
     }
     numFramesSinceResize++;
 }

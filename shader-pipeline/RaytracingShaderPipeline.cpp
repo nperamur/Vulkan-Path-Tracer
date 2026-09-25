@@ -21,9 +21,12 @@ RaytracingShaderPipeline::RaytracingShaderPipeline(std::string string, vk::raii:
     ShaderProgram rayGen(string + "Raygen.rgen.spv", &device, vk::ShaderStageFlagBits::eRaygenKHR);
     ShaderProgram miss(string + "Miss.rmiss.spv", &device, vk::ShaderStageFlagBits::eMissKHR);
     ShaderProgram closestHit(string + "ClosestHit.rchit.spv", &device, vk::ShaderStageFlagBits::eClosestHitKHR);
+    ShaderProgram anyHit(string + "AnyHit.rahit.spv", &device, vk::ShaderStageFlagBits::eAnyHitKHR);
+
     shaders.push_back(std::move(rayGen));
     shaders.push_back(std::move(miss));
     shaders.push_back(std::move(closestHit));
+    shaders.push_back(std::move(anyHit));
     this -> numMaterials = numMaterials;
     RaytracingShaderPipeline::setUpPipeline();
 
@@ -65,12 +68,17 @@ void RaytracingShaderPipeline::setUpPipeline() {
     );
 
 
-    vk::RayTracingShaderGroupCreateInfoKHR hitGroup(
+    vk::RayTracingShaderGroupCreateInfoKHR opaqueHitGroup(
         vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
         VK_SHADER_UNUSED_KHR, 2, VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR
     );
 
-    std::array<vk::RayTracingShaderGroupCreateInfoKHR, 3> groups = {raygenGroup, missGroup, hitGroup};
+    vk::RayTracingShaderGroupCreateInfoKHR alphaHitGroup(
+        vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
+        VK_SHADER_UNUSED_KHR, 2, 3, VK_SHADER_UNUSED_KHR
+    );
+
+    std::array<vk::RayTracingShaderGroupCreateInfoKHR, 4> groups = {raygenGroup, missGroup, opaqueHitGroup, alphaHitGroup};
 
 
     uint32_t count =
@@ -88,9 +96,9 @@ void RaytracingShaderPipeline::setUpPipeline() {
     rtPipelineLayout.emplace(*device, layoutInfo);
     vk::RayTracingPipelineCreateInfoKHR pipelineCreateInfo(
         {},
-        3,
+        4,
         (info.data()),
-        3,
+        4,
         (groups.data()),
         1,
         nullptr,
@@ -186,7 +194,7 @@ void RaytracingShaderPipeline::setUpPipeline() {
 
 vk::ShaderStageFlags RaytracingShaderPipeline::getShaderStageFlags() {
     return vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eMissKHR |
-           vk::ShaderStageFlagBits::eClosestHitKHR;
+           vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eAnyHitKHR;
 }
 
 
