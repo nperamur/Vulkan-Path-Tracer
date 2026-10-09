@@ -320,7 +320,7 @@ void AccelerationStructureManager::buildTLASGeometry(std::vector<AccelerationStr
             (entity -> hasMaterial()) ? materialIndex : 0,
             0xFF,
             (entity -> hasMaterial()) ? (materialIndex) : 0,
-            vk::GeometryInstanceFlagBitsKHR::eTriangleFrontCounterclockwise,
+            {},
             blasData[i].deviceAddress
         );
         if (entity -> hasMaterial()) {

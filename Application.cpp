@@ -432,6 +432,7 @@ void Application::setupDevices() {
     semaphoreFeatures.timelineSemaphore = VK_TRUE;
     physicalDeviceFeatures.features.geometryShader = VK_TRUE;
     physicalDeviceFeatures.features.shaderInt64 = VK_TRUE;
+    physicalDeviceFeatures.features.shaderInt16 = VK_TRUE;
     physicalDeviceFeatures.features.samplerAnisotropy = VK_TRUE;
     VkPhysicalDeviceDescriptorIndexingFeatures indexing{};
     indexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
@@ -440,7 +441,7 @@ void Application::setupDevices() {
     indexing.descriptorBindingPartiallyBound = VK_TRUE;
     indexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
 
-    
+
     vk::DeviceCreateInfo deviceCreateInfo (
         {},
         1,

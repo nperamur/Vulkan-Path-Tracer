@@ -100,7 +100,7 @@ void RaytracingShaderPipeline::setUpPipeline() {
         (info.data()),
         4,
         (groups.data()),
-        1,
+        2,
         nullptr,
         nullptr, nullptr, *rtPipelineLayout,
         nullptr,
