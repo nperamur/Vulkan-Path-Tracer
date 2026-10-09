@@ -4,7 +4,8 @@ Diffuse lighting uses cosine weighted importance sampling and specular uses GGX 
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
 
-<img src="https://github.com/user-attachments/assets/bfabc9c5-d244-452c-ab12-973ba534b7e7" />
+
+<img width="2560" height="1458" alt="Screenshot 2026-09-24 012211" src="https://github.com/user-attachments/assets/0dcdd36c-449c-4faa-b5f6-0fadf0cb9c22" />
 
 
 | | Low Roughness | High Roughness |
@@ -18,8 +19,7 @@ The pathtracer is progressive, meaning you can move the camera and watch the ima
 
 The render below further demonstrates how the path tracer handles different material properties. In the image, the teapot shows rough reflections, which appear blurrier, while the sphere shows smooth reflections. The cube demonstrates a rougher, more diffuse material with less reflectivity.
 
-<img width="400" alt="Screenshot 2026-07-20 012948" src="https://github.com/user-attachments/assets/9fba72ff-575b-42bf-9412-5e7f45aeeaf3" />
-
+<img width="400" alt="Screenshot 2026-09-05 224859" src="https://github.com/user-attachments/assets/eed3babc-4c3f-4c24-ba70-01da8a0f9456" />
 
 #### Update: Added Area Lights support, textured glTF model loading, and transmission for refractive materials
 
@@ -33,8 +33,8 @@ Renders demonstrating these additions are shown below.
   </tr>
   <tr>
     <td><img width="400" alt="Screenshot 2026-09-04 183147" src="https://github.com/user-attachments/assets/de3ec325-89b9-4d12-b2fb-739c844e08f3" /></td>
-    <td><img height="400" src="https://github.com/user-attachments/assets/bfabc9c5-d244-452c-ab12-973ba534b7e7" /></td>
-    <td><img width="400" src="https://github.com/user-attachments/assets/f3b807e6-e09b-4aed-82d2-7d5c913b50b0" /></td>
+    <td><img height="400" alt="Screenshot 2026-09-24 012211" src="https://github.com/user-attachments/assets/d8411b30-b4a3-48aa-a6db-e1352effc580" /></td>
+    <td><img width="400" alt="Screenshot 2026-09-30 161333" src="https://github.com/user-attachments/assets/8e620ebd-fe18-4f4b-a8c0-82caa66b56b1" /></td>
 
   </tr>
 </table>
