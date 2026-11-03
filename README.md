@@ -4,7 +4,8 @@ Diffuse lighting uses cosine weighted importance sampling and specular uses GGX 
 The pathtracer is progressive, meaning you can move the camera and watch the image converge over time.
 
 
-<img width="2556" height="1446" alt="Screenshot 2026-10-09 115719" src="https://github.com/user-attachments/assets/1d3507a9-90c6-493a-845a-505808101892" />
+<img width="2556" height="1456" alt="Screenshot 2026-11-03 013132" src="https://github.com/user-attachments/assets/6656f9aa-951a-448b-92e7-68874a87da29" />
+
 
 
 | | Low Roughness | High Roughness |
@@ -32,7 +33,7 @@ Renders demonstrating these additions are shown below.
   </tr>
   <tr>
     <td><img width="400" alt="Screenshot 2026-09-04 183147" src="https://github.com/user-attachments/assets/de3ec325-89b9-4d12-b2fb-739c844e08f3" /></td>
-    <td><img height="400" alt="Screenshot 2026-10-09 115719" src="https://github.com/user-attachments/assets/1d3507a9-90c6-493a-845a-505808101892" /></td>
+    <td><img height="400" alt="Screenshot 2026-11-03 013132" src="https://github.com/user-attachments/assets/6656f9aa-951a-448b-92e7-68874a87da29" /></td>
     <td><img width="400" alt="Screenshot 2026-09-30 161333" src="https://github.com/user-attachments/assets/8e620ebd-fe18-4f4b-a8c0-82caa66b56b1" /></td>
 
   </tr>
