@@ -99,6 +99,21 @@ file(GLOB GLSL_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.rahit
 )
 
+file(GLOB GLSL_UTIL_FILES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/*.glsl
+)
+
+foreach(GLSL_FILE ${GLSL_FILES})
+    get_filename_component(FILE_NAME ${GLSL_FILE} NAME)
+    set(SPV_FILE ${CMAKE_BINARY_DIR}/resources/shaders/${FILE_NAME}.spv)
+    add_custom_command(
+            OUTPUT ${SPV_FILE}
+            COMMAND ${GLSLC} ${GLSL_FILE} -g -o ${SPV_FILE} --target-env=vulkan1.3
+            DEPENDS ${GLSL_FILE} ${GLSL_UTIL_FILES}
+    )
+    list(APPEND SPV_FILES ${SPV_FILE})
+endforeach()
+
 foreach(GLSL_FILE ${GLSL_FILES})
     get_filename_component(FILE_NAME ${GLSL_FILE} NAME)
     set(SPV_FILE ${CMAKE_BINARY_DIR}/resources/shaders/${FILE_NAME}.spv)

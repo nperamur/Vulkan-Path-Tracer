@@ -352,6 +352,9 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMapp
         this->imageViewManager->resizeImage(RenderPassImages::blendOutput, width, height);
         this->imageViewManager->resizeImage(RenderPassImages::visibilityBuffer, width, height);
         // this->imageViewManager->resizeImage(RenderPassImages::normalBuffer, width, height);
+        std::visit([](auto& image) {
+            image.prevStage = 0;
+        }, *historyRenderPassImage);
     }
     if (numFramesSinceResize < Config::maxFramesInFlight) {
         depthTextureViews[frameIndex] = TextureView{.imageView = depthImageView};
@@ -379,9 +382,6 @@ void Renderer::resizeImageViews(ShaderPair* combineShaders, ShaderPair *toneMapp
 
         TextureView* toneMappingTextureView = this->imageViewManager->getTextureView(RenderPassImages::blendOutput, frameIndex);
         toneMappingShader -> setTextureSampler(ToneMappingShaderSlots::baseImage, *toneMappingTextureView, vk::ImageLayout::eShaderReadOnlyOptimal, frameIndex);
-        std::visit([](auto& image) {
-            image.prevStage = 0;
-        }, *historyRenderPassImage);
     }
     numFramesSinceResize++;
 }

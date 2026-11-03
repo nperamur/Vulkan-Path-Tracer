@@ -177,12 +177,6 @@ void GLTFLoader::processNodes(
                 }
 
 
-                // Entity entity = Entity(
-                //     primitiveName,
-                //     ,
-                //     material,
-                //
-                // );
                 Model model = loader.load(
                     flatPositions,
                     indices,
@@ -202,6 +196,9 @@ void GLTFLoader::processNodes(
                 Entity entity = Entity(primitiveName, std::move(model), material, mvp.transformation);
                 entity.setTransform(totalTransform);
                 entity.updateTransformationMatrix();
+                if (gltf.materials[materialIndex].alphaMode == fastgltf::AlphaMode::Mask) {
+                    entity.setOpaque(false);
+                }
                 i++;
 
                 if (isEmissive) {

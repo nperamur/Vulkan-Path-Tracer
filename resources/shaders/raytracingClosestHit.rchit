@@ -2,8 +2,6 @@
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_ray_tracing_position_fetch : require
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_KHR_shader_subgroup_ballot : require
@@ -37,24 +35,7 @@ layout(location = 0) rayPayloadInEXT RayPayload rayPayload;
 
 
 
-struct Material {
-    vec4 color;
-    mat4 modelMatrix;
-    uint64_t vertexAddress;
-    uint64_t indexAddress;
-    uint64_t normalAddress;
-    uint64_t textureCoordsAddress;
-    float roughness;
-    float metalness;
-    float reflectivity;
-    float albedoFactor;
-    float transmissionFactor;
-    float ior;
-    int lightIndex;
-    int baseColorIndex;
-    int normalMapIndex;
-    int metallicRoughnessMapIndex;
-};
+
 
 layout(std430, set = 0, binding = 8) buffer Materials {
     Material materialData[];
@@ -458,10 +439,14 @@ void transformNormal(in Material material, inout vec3 normal, vec2 uv, uint prim
 
     float nt = dot(normal, tangent);
 
-    tangent = -normalize(tangent - normal * nt);
+    tangent = normalize(tangent - normal * nt);
     vec3 bitangentOrtho = cross(normal, tangent);
-    float handedness = sign(dot(bitangentRaw, bitangentOrtho));
+    float handedness = -sign(dot(bitangentRaw, bitangentOrtho));
     vec3 bitangent = bitangentOrtho * handedness;
+    if (gl_HitKindEXT == gl_HitKindBackFacingTriangleEXT) {
+        tangent = -tangent;
+        bitangent = -bitangent;
+    }
     mat3 tbn = mat3(tangent, bitangent, normal);
     normalSample = tbn * normalSample;
     normal = normalize(normalSample);
@@ -573,18 +558,18 @@ vec3 fresnelSchlick(vec3 normal, vec3 view, vec3 f0) {
 
 
 
-vec3 getSpecularBRDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR, float roughness, float metalness) {
+vec3 getSpecularBRDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, bool TIR, float roughness, float metalness, vec3 fresnelIncidentDir) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
     vec3 f0 = mix(vec3(material.reflectivity), surfaceColor, metalness);
     view = normalize(view);
     return (sampleGGXNormalDistributionFunction(roughness, normal, microfacetNormal)
-            * getGGXGeometry(roughness, normal, view, lightDir) * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, view, f0)))
+            * getGGXGeometry(roughness, normal, view, lightDir) * (TIR ? vec3(1.0) : fresnelSchlick(microfacetNormal, fresnelIncidentDir, f0)))
             / (max((4.0 * clamp(dot(normal, lightDir), 0, 1)) * clamp(dot(normal, view), 0, 1), 0.0001));
 }
 
-vec3 getBTDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta, float roughness, float metalness) {
+vec3 getBTDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfacetNormal, vec3 view, vec3 lightDir, float n_i, float n_t, float eta, float roughness, float metalness, vec3 fresnelIncidentDir) {
     normal = normalize(normal);
     lightDir = normalize(lightDir);
     microfacetNormal = normalize(microfacetNormal);
@@ -601,7 +586,7 @@ vec3 getBTDF(in Material material, vec3 surfaceColor, vec3 normal, vec3 microfac
 
     float D = sampleGGXNormalDistributionFunction(roughness, normal, microfacetNormal);
     float G = getGGXGeometry(roughness, normal, view, lightDir);
-    vec3 F = fresnelSchlick(microfacetNormal, view, f0);
+    vec3 F = fresnelSchlick(microfacetNormal, fresnelIncidentDir, f0);
 
     return (D * G * (1.0 - F) * VdotH * LdotH * pow(n_t, 2)) / (pow(Ht, 2) * max(abs(dot(view, normal)), 1e-4) * abs(dot(normal, lightDir)));
 }
@@ -709,8 +694,8 @@ void processBounce(
     bool TIR = false;
     vec3 refracted = roughness != 0 ? refract(prevRayDir, microfacetNormal, eta) : refract(prevRayDir, normal, eta);
 
-
-    float fresnelValue = mix(getFresnelValue(material, surfaceColor, roughness != 0 ? microfacetNormal : normal, n_i > n_t ? -refracted : -prevRayDir, metalness), 1.0, metalness);
+    vec3 fresnelIncidentDir = n_i > n_t ? -refracted : -prevRayDir;
+    float fresnelValue = mix(getFresnelValue(material, surfaceColor, roughness != 0 ? microfacetNormal : normal, fresnelIncidentDir, metalness), 1.0, metalness);
     float rand = randFloat(randState);
     bool reflectionBounce = (rand <= fresnelValue);
     bool transmissionBounce = false;
@@ -769,26 +754,29 @@ void processBounce(
         if (dot(directTransmissionHalfVector, normal) < 0.0f) {
             directTransmissionHalfVector = -directTransmissionHalfVector;
         }
+        vec3 neeRefracted = refract(prevRayDir, directTransmissionHalfVector, eta);
+        vec3 neeRefractedReflection = refract(prevRayDir, directHalfVector, eta);
+        vec3 directFresnelTransmissionIncidentDir = n_i > n_t ? -lightDir : -prevRayDir;
+        vec3 directFresnelReflectionIncidentDir = n_i > n_t ? -neeRefractedReflection : -prevRayDir;
+        float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, directFresnelTransmissionIncidentDir, metalness), 1.0, metalness);
+        float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, directFresnelReflectionIncidentDir, metalness), 1.0, metalness);
 
-        float directTransmissionFresnelValue = mix(getFresnelValue(material, surfaceColor, directTransmissionHalfVector, -prevRayDir, metalness), 1.0, metalness);
-        vec3 nee_refracted = refract(prevRayDir, directTransmissionHalfVector, eta);
-        float directFresnelValue = mix(getFresnelValue(material, surfaceColor, directHalfVector, n_i > n_t ? -nee_refracted : -prevRayDir, metalness), 1.0, metalness);
+        vec3 directReflectionFresnel = (fresnelSchlick(directHalfVector, directFresnelReflectionIncidentDir, f0));
 
-        vec3 directFresnel = (fresnelSchlick(directHalfVector, n_i > n_t ? -nee_refracted : -prevRayDir, f0));
 
-        bool neeTIR = material.transmissionFactor > 0 && (dot(nee_refracted, nee_refracted) < 1e-6);
+        bool neeTransmissionTIR = material.transmissionFactor > 0 && (dot(neeRefracted, neeRefracted) < 1e-6);
+        bool neeReflectionTIR = material.transmissionFactor > 0 && (dot(neeRefractedReflection, neeRefractedReflection) < 1e-6);
 
-        vec3 directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeTIR, roughness, metalness) * max(0, dot(normal, normalize(lightDir)))
-                   + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directFresnel) * (1.0 - metalness) * (neeTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
-                   + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * (neeTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
+
+        vec3 directBRDF = getSpecularBRDF(material, surfaceColor, normal, directHalfVector, -prevRayDir, normalize(lightDir), neeReflectionTIR, roughness, metalness, directFresnelReflectionIncidentDir) * max(0, dot(normal, normalize(lightDir)))
+                   + (1.0 - material.transmissionFactor) * getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, normalize(lightDir)) * (1.0 - directReflectionFresnel) * (1.0 - metalness) * (neeReflectionTIR ? 0.0 : 1.0) * max(0, dot(normal, normalize(lightDir)))
+                   + getBTDF(material, surfaceColor, normal, directTransmissionHalfVector, -prevRayDir, normalize(lightDir), n_i, n_t, eta, roughness, metalness, directFresnelTransmissionIncidentDir) * (1.0 - metalness) * material.transmissionFactor * (neeTransmissionTIR ? 0 : 1.0) * abs(dot(normal, normalize(lightDir)));
 
         float pdfBSDFDiffuseToLight  = max(dot(normal, lightDir), 0.0) / PI;
         float pdfBSDFReflectionToLight = getGGX_VNDF_REFLECTION_PDF(roughness, normal, -prevRayDir, lightDir, directHalfVector);
         float pdfBSDFTransmission = getGGX_TRANSMISSION_PDF(roughness, normal, -prevRayDir, lightDir, directTransmissionHalfVector, n_t, n_i);
-        if (neeTIR) {
-            directFresnelValue = 1.0f;
-            directTransmissionFresnelValue = 1.0f;
-        }
+        if (neeReflectionTIR) directFresnelValue = 1.0f;
+        if (neeTransmissionTIR) directTransmissionFresnelValue = 1.0f;
         bsdfPDF = ((1.0 - directFresnelValue) * pdfBSDFDiffuseToLight) * (1.0f - material.transmissionFactor) + (directFresnelValue * pdfBSDFReflectionToLight) + (1.0 - directTransmissionFresnelValue) * pdfBSDFTransmission * material.transmissionFactor;
         float misWeight = lightDirectionPDF / (bsdfPDF + lightDirectionPDF);
         vec3 directLight = vec3(0.0f);
@@ -820,43 +808,35 @@ void processBounce(
         throughput *= exp(-thickness * (1.0 - surfaceColor) * absorption);
     }
     if (roughness == 0 && !diffuseBounce) {
+        vec3 deltaFresnelReflectance = fresnelSchlick(normal, fresnelIncidentDir, f0);
         if (reflectionBounce) {
-            throughput *= fresnelSchlick(normal, n_i > n_t ? -refracted : -prevRayDir, f0) / fresnelValue;
+            throughput *= deltaFresnelReflectance / fresnelValue;
         } else if (transmissionBounce) {
             float transmitProb = (1.0 - fresnelValue) * material.transmissionFactor;
-            throughput *= (vec3(1.0) - fresnelSchlick(normal, n_i > n_t ? -refracted : -prevRayDir, f0)) / transmitProb;
+            throughput *= (vec3(1.0) - deltaFresnelReflectance) / transmitProb;
             throughput /= pow(eta, 2);
         }
         return;
     }
 
     if (dot(rayDir, normal) <= 0.0 && material.transmissionFactor == 0) { throughput = vec3(0.0f); return; }
-
+    vec3 fresnelReflectance = fresnelSchlick(microfacetNormal, fresnelIncidentDir, f0);
     if (diffuseBounce) {
         lobePDF = (1.0 - fresnelValue) * (1.0 - material.transmissionFactor) * pdfDiffuse;
-        //throughput *= getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, rayDir)
-        //              * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
-        //              * (1.0 - metalness)
-        //              * (1.0 - material.transmissionFactor)
-        //              * (TIR ? 0.0 : 1.0)
-        //              * max(dot(normal, rayDir), 0.0)
-        //              / lobePdf;
         throughput *= (getBurleyDiffuse(surfaceColor, roughness, normal, -prevRayDir, rayDir) * PI)
-                     * (1.0 - fresnelSchlick(microfacetNormal, -prevRayDir, f0))
+                     * (1.0 - fresnelReflectance)
                      * (1.0 - metalness)
                      * (TIR ? 0.0 : 1.0)
                      / (1.0 - fresnelValue);
     } else if (reflectionBounce) {
         lobePDF = fresnelValue * lobePdfReflection;
         throughput *= sampleGGXGeometry(roughness, normal, rayDir)
-            * fresnelSchlick(microfacetNormal, n_i > n_t ? -refracted : -prevRayDir, f0)
+            * fresnelReflectance
             / fresnelValue;
     } else if (transmissionBounce) {
         lobePDF = (1.0 - fresnelValue) * material.transmissionFactor * lobePdfTransmission;
-        //throughput *= getBTDF(material, surfaceColor, normal, microfacetNormal, -prevRayDir, normalize(rayDir), n_i, n_t, eta, roughness, metalness) * (1.0 - metalness) * material.transmissionFactor * abs(dot(normal, rayDir))
-         //                    * (TIR ? 0.0 : 1.0) / lobePdf;
         throughput *= sampleGGXGeometry(roughness, normal, rayDir)
-                     * (1.0 - fresnelSchlick(microfacetNormal, n_i > n_t ? -refracted : -prevRayDir, f0))
+                     * (1.0 - fresnelReflectance)
                      * (1.0 - metalness)
                      * (TIR ? 0.0 : 1.0)
                      / ((1.0 - fresnelValue) * (eta * eta));
@@ -1019,7 +999,7 @@ void main() {
    if (mis) {
        traceRayEXT(
             topLevelAS,
-            gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT,
+            gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT,
             0xFF,
             0,
             0,

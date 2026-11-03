@@ -149,12 +149,9 @@ void RenderGraph::executeRenderPass(RenderPass &renderPass, vk::raii::CommandBuf
         std::visit([&barrierManager, &commandBuffer, &renderPass](auto& srcImage, auto& dstImage) {
             barrierManager.begin();
 
-            if (srcImage.prevStage != BarrierUsage::transferRead) {
-                barrierManager.transition(srcImage.imageResource.image, srcImage.prevStage != 0 ? srcImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferRead);
-            }
-            if (dstImage.prevStage != BarrierUsage::transferWrite) {
-                barrierManager.transition(dstImage.imageResource.image, dstImage.prevStage != 0 ? dstImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferWrite);
-            }
+            barrierManager.transition(srcImage.imageResource.image, srcImage.prevStage != 0 ? srcImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferRead);
+            barrierManager.transition(dstImage.imageResource.image, dstImage.prevStage != 0 ? dstImage.prevStage : BarrierUsage::colorNone, BarrierUsage::transferWrite);
+
             barrierManager.commit(commandBuffer);
             vk::ImageSubresourceLayers subresource{
                 vk::ImageAspectFlagBits::eColor,

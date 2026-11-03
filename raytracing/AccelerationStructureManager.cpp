@@ -406,7 +406,7 @@ void AccelerationStructureManager::buildBLASGeometry(std::vector<Entity*> entiti
         vk::AccelerationStructureGeometryKHR triangleGeometry(
             vk::GeometryTypeKHR::eTriangles,
             asGeometryData,
-            vk::GeometryFlagBitsKHR::eOpaque
+            entity -> isOpaque() ?  vk::GeometryFlagBitsKHR::eOpaque : vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation
 
         );
 

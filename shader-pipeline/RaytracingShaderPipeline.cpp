@@ -68,17 +68,13 @@ void RaytracingShaderPipeline::setUpPipeline() {
     );
 
 
-    vk::RayTracingShaderGroupCreateInfoKHR opaqueHitGroup(
-        vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
-        VK_SHADER_UNUSED_KHR, 2, VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR
-    );
-
-    vk::RayTracingShaderGroupCreateInfoKHR alphaHitGroup(
+    vk::RayTracingShaderGroupCreateInfoKHR triangleHitGroup(
         vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
         VK_SHADER_UNUSED_KHR, 2, 3, VK_SHADER_UNUSED_KHR
     );
 
-    std::array<vk::RayTracingShaderGroupCreateInfoKHR, 4> groups = {raygenGroup, missGroup, opaqueHitGroup, alphaHitGroup};
+
+    std::array<vk::RayTracingShaderGroupCreateInfoKHR, 3> groups = {raygenGroup, missGroup, triangleHitGroup};
 
 
     uint32_t count =
@@ -98,7 +94,7 @@ void RaytracingShaderPipeline::setUpPipeline() {
         {},
         4,
         (info.data()),
-        4,
+        3,
         (groups.data()),
         2,
         nullptr,

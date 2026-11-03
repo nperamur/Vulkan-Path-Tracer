@@ -155,7 +155,7 @@ void main() {
 
         traceRayEXT(
            topLevelAS,
-           gl_RayFlagsOpaqueEXT,
+           gl_RayFlagsNoneEXT,
            0xFF, 0, 0, 0,
            cameraPosition, tMin,
            rayDir, tMax, 0
@@ -197,7 +197,7 @@ void main() {
             vec3 normal = octDecode(unpackSnorm2x16(rayPayload.normal));
             traceRayEXT(
                 topLevelAS,
-                gl_RayFlagsOpaqueEXT,
+                gl_RayFlagsNoneEXT,
                 0xFF,
                 0,
                 0,

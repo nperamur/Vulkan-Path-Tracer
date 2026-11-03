@@ -36,6 +36,7 @@ class Entity {
     int emissiveStride = -1;
     int emissiveIndex = -1;
     std::string identifier;
+    bool opaque = true;
 
     glm::vec3 position = glm::vec3(0, 0, 0);
     glm::vec3 rotation = glm::vec3(0, 0, 0);
@@ -79,6 +80,14 @@ class Entity {
             this -> emissiveIndex = index;
             this -> emissiveStride = stride;
 
+        }
+
+        void setOpaque(bool isOpaque) {
+            this -> opaque = isOpaque;
+        }
+
+        [[nodiscard]] bool isOpaque() const {
+            return this->opaque;
         }
 
         Material getMaterial();

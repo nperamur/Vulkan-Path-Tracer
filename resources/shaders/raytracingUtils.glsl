@@ -1,4 +1,6 @@
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 uint nextRand(inout uint randState) {
     randState ^= randState << 13;
     randState ^= randState >> 17;
@@ -70,6 +72,25 @@ struct Light {
 layout(std430, set = 0, binding = 10) buffer LightCDFBuffer {
     float data[];
 } lightCDF;
+
+struct Material {
+    vec4 color;
+    mat4 modelMatrix;
+    uint64_t vertexAddress;
+    uint64_t indexAddress;
+    uint64_t normalAddress;
+    uint64_t textureCoordsAddress;
+    float roughness;
+    float metalness;
+    float reflectivity;
+    float albedoFactor;
+    float transmissionFactor;
+    float ior;
+    int lightIndex;
+    int baseColorIndex;
+    int normalMapIndex;
+    int metallicRoughnessMapIndex;
+};
 
 layout(std430, set = 0, binding = 11) buffer LightDataBuffer {
     uint lightCount;
