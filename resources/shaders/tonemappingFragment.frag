@@ -142,7 +142,7 @@ vec3 agxCustom(vec3 color) {
 
 void main() {
     vec3 baseColor = texture(baseImage, passTextureCoords).rgb;
-    outColor = vec4(agxCustom(baseColor * 0.08), 1.0);
+    outColor = vec4(agxCustom(baseColor * 0.09), 1.0);
     //outColor = vec4(agx(baseColor * 0.25), 1.0);
     //outColor = vec4(ACESFilmicToneMapping(baseColor * 0.25), 1.0);
 
